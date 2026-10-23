@@ -1,0 +1,9 @@
+# macOS
+.DS_Store
+
+# Build outputs
+Zest/.build/
+Zest/Zest.app/
+
+# Harness artifacts
+Zest/Harness/run/
