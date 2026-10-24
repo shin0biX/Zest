@@ -21,10 +21,22 @@ in a gap or the hub to cancel. Results are saved beside the originals, always.
 
 Two wheel styles ship, both floating over the desktop with no panel behind them:
 
-- **Concentric rings** *(the default)* — all three surfaces visible at once; the
-  modifier you tap brightens its ring while the others stay reachable.
-- **Petal fan** — one surface at a time as a compact flower of graphite-glass petals
-  (shown above); tapping a different modifier rebuilds the fan in place.
+**Concentric rings** *(the default)* — every surface visible at once:
+
+![Rings wheel](assets/rings.png)
+
+- The outer ring holds conversion formats, the middle ring the tools, the inner ring
+  the actions — so all of Zest's reach sits in one 576 pt dial.
+- Tapping a modifier brightens that ring while the others stay live: the hub legend
+  shows which ring maps to which key, and dropping on any ring commits that ring's
+  pick, whichever modifier is currently armed.
+- The hub carries the file you're dragging — icon, name, format, size — and dropping
+  on it cancels.
+
+**Petal fan** — one surface at a time as a compact flower of graphite-glass petals
+(shown above); tapping a different modifier rebuilds the fan in place. Some people
+prefer it for the bigger, upright labels; the rings dial keeps everything in one
+glance.
 
 Switch styles in Settings → General → Wheel style.
 
