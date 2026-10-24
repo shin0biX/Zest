@@ -34,7 +34,12 @@ enum Planner {
             DispatchQueue.global(qos: .userInitiated).async {
                 do {
                     let outputs = try PDFEngine.fromImages(all)
-                    onMain { HUDController.shared.succeed(token, outputs: outputs) }
+                    onMain {
+                        HUDController.shared.succeed(token, outputs: outputs)
+                        RecentStore.record(title: "\(all.count) images → PDF",
+                                            choiceId: "fmt-pdf", mode: .convert,
+                                            inputs: all, outputs: outputs)
+                    }
                 } catch {
                     onMain { HUDController.shared.fail(token, message: error.localizedDescription) }
                 }
@@ -55,7 +60,12 @@ enum Planner {
             DispatchQueue.global(qos: .userInitiated).async {
                 do {
                     let outputs = try Convert.perform(url, to: fmt, params: params)
-                    onMain { HUDController.shared.succeed(token, outputs: outputs) }
+                    onMain {
+                        HUDController.shared.succeed(token, outputs: outputs)
+                        RecentStore.record(title: "\(url.pathExtension.uppercased()) → \(fmt.title)",
+                                            choiceId: "fmt-\(fmt.ext)", mode: .convert,
+                                            inputs: [url], outputs: outputs)
+                    }
                 } catch {
                     onMain { HUDController.shared.fail(token, message: error.localizedDescription) }
                 }
@@ -68,7 +78,12 @@ enum Planner {
         DispatchQueue.global(qos: .userInitiated).async {
             do {
                 let out = try ArchiveEngine.create(urls: urls, ext: ext)
-                onMain { HUDController.shared.succeed(token, outputs: [out]) }
+                onMain {
+                    HUDController.shared.succeed(token, outputs: [out])
+                    RecentStore.record(title: "\(urls.count) items → \(ext.uppercased())",
+                                        choiceId: "fmt-\(ext)", mode: .convert,
+                                        inputs: urls, outputs: [out])
+                }
             } catch {
                 onMain { HUDController.shared.fail(token, message: error.localizedDescription) }
             }
@@ -89,7 +104,7 @@ enum Planner {
             DispatchQueue.global(qos: .userInitiated).async {
                 do {
                     let outputs = try ToolRunner.run(tool: id, inputs: urls, params: params)
-                    onMain { finish(token: token, tool: id, outputs: outputs) }
+                    onMain { finish(token: token, tool: id, outputs: outputs, inputs: urls) }
                 } catch {
                     onMain { HUDController.shared.fail(token, message: error.localizedDescription) }
                 }
@@ -102,7 +117,7 @@ enum Planner {
             DispatchQueue.global(qos: .userInitiated).async {
                 do {
                     let outputs = try ToolRunner.run(tool: id, inputs: [url], params: params)
-                    onMain { finish(token: token, tool: id, outputs: outputs) }
+                    onMain { finish(token: token, tool: id, outputs: outputs, inputs: [url]) }
                 } catch {
                     onMain { HUDController.shared.fail(token, message: error.localizedDescription) }
                 }
@@ -110,11 +125,17 @@ enum Planner {
         }
     }
 
-    private static func finish(token: HUDToken, tool: String, outputs: [URL]) {
+    private static func finish(token: HUDToken, tool: String, outputs: [URL],
+                               inputs: [URL] = []) {
         if tool == "qr", outputs.isEmpty {
             HUDController.shared.succeed(token, outputs: [], note: "No codes found")
         } else {
             HUDController.shared.succeed(token, outputs: outputs)
+            if !inputs.isEmpty {
+                RecentStore.record(title: toolTitle(tool),
+                                   choiceId: "tool-\(tool)", mode: .tools,
+                                   inputs: inputs, outputs: outputs)
+            }
         }
     }
 
@@ -284,5 +305,67 @@ enum Actions {
     private static func toast(_ message: String) {
         let token = HUDController.shared.begin(message)
         HUDController.shared.succeed(token, outputs: [], note: message)
+    }
+}
+
+
+// MARK: - Recent conversions
+
+/// One remembered operation, persisted to Application Support so the status
+/// menu can offer "run again" and "reveal" long after the HUD closed.
+struct RecentEntry: Codable {
+    let title: String
+    let choiceId: String
+    let mode: String
+    let inputPaths: [String]
+    let outputPaths: [String]
+    let date: Date
+}
+
+extension RecentEntry {
+    /// Input URLs that still exist on disk.
+    func inputPathsWithExistenceCheck() -> [URL] {
+        inputPaths.map { URL(fileURLWithPath: $0) }
+            .filter { FileManager.default.fileExists(atPath: $0.path) }
+    }
+}
+
+enum RecentStore {
+    static let url = FileManager.default.urls(for: .applicationSupportDirectory,
+                                              in: .userDomainMask)[0]
+        .appendingPathComponent("Zest/recent.json")
+    static let limit = 12
+
+    static func load() -> [RecentEntry] {
+        guard let data = try? Data(contentsOf: url) else { return [] }
+        return (try? JSONDecoder().decode([RecentEntry].self, from: data)) ?? []
+    }
+
+    /// Main-thread only; the HUD success path already lands on main.
+    static func record(title: String, choiceId: String, mode: WheelMode,
+                       inputs: [URL], outputs: [URL]) {
+        let entry = RecentEntry(title: title, choiceId: choiceId, mode: mode.rawValue,
+                                inputPaths: inputs.map(\.path),
+                                outputPaths: outputs.map(\.path),
+                                date: Date())
+        var all = [entry] + load()
+        all = Array(all.prefix(limit))
+        try? FileManager.default.createDirectory(
+            at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        if let data = try? JSONEncoder().encode(all) {
+            try? data.write(to: url, options: .atomic)
+        }
+        NotificationCenter.default.post(name: .zestSettingsChanged, object: nil)
+    }
+
+    static func clear() {
+        try? FileManager.default.removeItem(at: url)
+    }
+
+    /// Rebuilds the wheel choice for an entry from the real catalog, gated by
+    /// the same availability rules that built the original wheel.
+    static func choice(for entry: RecentEntry, inputs: [URL]) -> WheelChoice? {
+        guard let mode = WheelMode(rawValue: entry.mode) else { return nil }
+        return Catalog.choices(for: inputs, mode: mode).first { $0.id == entry.choiceId }
     }
 }

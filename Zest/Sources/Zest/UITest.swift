@@ -16,6 +16,7 @@ enum UITest {
         let root = Temp.dir(prefix: "zest-uitest")
         print("Zest uitest — \(root.path)")
 
+        RecentStore.clear()
         var harness = Harness()
         do {
             let png = root.appendingPathComponent("photo.png")
@@ -490,6 +491,18 @@ enum UITest {
             try expect(texts.contains(png.lastPathComponent) && texts.contains(png2.lastPathComponent),
                        "Float rows are missing files: \(texts)")
             panel.close()
+        }
+
+        harness.check("Planner: conversions are recorded for Run again") {
+            let entries = RecentStore.load()
+            try expect(!entries.isEmpty, "no recent entries after planner runs")
+            guard let entry = entries.first else { throw ZestError("no entry") }
+            try expect(entry.choiceId.hasPrefix("fmt-"), "unexpected entry \(entry.choiceId)")
+            let inputs = entry.inputPathsWithExistenceCheck()
+            try expect(!inputs.isEmpty, "entry inputs no longer exist")
+            try expect(RecentStore.choice(for: entry, inputs: inputs) != nil,
+                       "recorded choice no longer resolves from the catalog")
+            RecentStore.clear()
         }
 
         harness.check("Settings: window builds and reflects prefs") {

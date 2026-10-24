@@ -111,6 +111,34 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         open.target = self
         menu.addItem(open)
 
+        let recents = RecentStore.load()
+        if !recents.isEmpty {
+            menu.addItem(.separator())
+            let header = NSMenuItem(title: "Recent", action: nil, keyEquivalent: "")
+            header.isEnabled = false
+            menu.addItem(header)
+            for (index, entry) in recents.prefix(6).enumerated() {
+                let names = entry.inputPaths.compactMap {
+                    URL(fileURLWithPath: $0).lastPathComponent
+                }.prefix(2).joined(separator: ", ")
+                let item = NSMenuItem(title: "\(entry.title) · \(names)",
+                                      action: nil, keyEquivalent: "")
+                let sub = NSMenu()
+                let run = NSMenuItem(title: "Run again", action: #selector(rerunRecent),
+                                     keyEquivalent: "")
+                run.target = self
+                run.representedObject = index
+                sub.addItem(run)
+                let reveal = NSMenuItem(title: "Reveal in Finder",
+                                        action: #selector(revealRecent), keyEquivalent: "")
+                reveal.target = self
+                reveal.representedObject = index
+                sub.addItem(reveal)
+                item.submenu = sub
+                menu.addItem(item)
+            }
+        }
+
         let settings = NSMenuItem(title: "Settings…", action: #selector(showSettings), keyEquivalent: ",")
         settings.target = self
         menu.addItem(settings)
@@ -132,6 +160,35 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         statusItem?.menu = menu
         statusItem?.button?.toolTip = "Zest — drag files, then tap \(Prefs.convertKey.title)"
+    }
+
+    @objc private func rerunRecent(_ sender: NSMenuItem) {
+        let recents = RecentStore.load()
+        guard let entry = recents.dropFirst(sender.representedObject as? Int ?? 0).first else { return }
+        let inputs = entry.inputPathsWithExistenceCheck()
+        guard !inputs.isEmpty else {
+            Alert.show("Files are gone",
+                       detail: "The original files for this item no longer exist.")
+            return
+        }
+        guard let mode = WheelMode(rawValue: entry.mode),
+              let choice = RecentStore.choice(for: entry, inputs: inputs) else {
+            Alert.show("Can't repeat this",
+                       detail: "The conversion is no longer available on this Mac.")
+            return
+        }
+        Planner.submit(context: DragContext(
+            urls: inputs, anchor: NSEvent.mouseLocation,
+            kind: KindDetector.commonKind(inputs)), choice: choice, mode: mode)
+    }
+
+    @objc private func revealRecent(_ sender: NSMenuItem) {
+        let recents = RecentStore.load()
+        guard let entry = recents.dropFirst(sender.representedObject as? Int ?? 0).first else { return }
+        let outputs = entry.outputPaths.map { URL(fileURLWithPath: $0) }
+            .filter { FileManager.default.fileExists(atPath: $0.path) }
+        guard !outputs.isEmpty else { return }
+        NSWorkspace.shared.activateFileViewerSelecting(outputs)
     }
 
     @objc private func openFiles() {
