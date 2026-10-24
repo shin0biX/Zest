@@ -3,7 +3,217 @@ import ServiceManagement
 
 /// Scroll documents use a flipped coordinate system so AppKit starts at the
 /// top instead of pinning a taller document to its bottom edge.
-private final class FlippedDocumentView: NSView {
+private // MARK: - Device style card
+
+/// Settings → Appearance → Device Style: four selectable styles, a live
+/// preview using the real `WheelView` renderer, animation intensity, and the
+/// green-glow slider. Every control writes through `Prefs` immediately.
+final class DeviceStyleCard: NSView {
+    private let preview = WheelView(frame: .zero)
+    private var cards: [DeviceStyle: NSView] = [:]
+    private var glowValue: NSTextField!
+    private var handlers: [SettingsHandler] = []
+
+    init() {
+        super.init(frame: .zero)
+        wantsLayer = true
+        layer?.cornerRadius = 10
+        layer?.backgroundColor = NSColor(calibratedWhite: 1, alpha: 0.03).cgColor
+
+        let sample = DemoAsset.url()
+        preview.translatesAutoresizingMaskIntoConstraints = false
+        preview.style = .fan
+        preview.fanScale = 0.34
+        preview.deviceStyle = Prefs.deviceStyle
+        preview.surfaces = Catalog.surfaces(for: [sample]).map {
+            (mode: $0.mode, choices: Array($0.choices.prefix(8)))
+        }
+        preview.emphasize(.tools)
+        preview.count = 1
+        preview.kind = .image
+        preview.fileName = sample.lastPathComponent
+        preview.fileFormat = sample.pathExtension.uppercased()
+        preview.totalBytes = sample.fileSize
+        preview.preview = true
+        addSubview(preview)
+
+        // 2×2 grid of style cards.
+        func cardRow(_ styles: [DeviceStyle]) -> NSStackView {
+            let row = NSStackView(views: styles.map(styleCard))
+            row.orientation = .horizontal
+            row.spacing = 8
+            row.alignment = .top
+            row.translatesAutoresizingMaskIntoConstraints = false
+            return row
+        }
+        let grid = NSStackView(views: [cardRow([.minimal, .classic]),
+                                       cardRow([.glass, .transformation])])
+        grid.orientation = .vertical
+        grid.spacing = 8
+        grid.alignment = .leading
+        grid.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(grid)
+
+        let intensity = SettingsSegmentedControl(
+            items: AnimationIntensity.allCases.map(\.title),
+            selected: AnimationIntensity.allCases.firstIndex(of: Prefs.animationIntensity) ?? 2)
+        let intensityHandler = SettingsHandler { [weak intensity] in
+            guard let intensity else { return }
+            Prefs.animationIntensity = AnimationIntensity.allCases[intensity.selectedSegment]
+            self.refreshPreview()
+        }
+        handlers.append(intensityHandler)
+        intensity.target = intensityHandler
+        intensity.action = #selector(SettingsHandler.fire)
+        intensity.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(intensity)
+        let intensityLabel = NSTextField(labelWithString: "Animation")
+        intensityLabel.font = .systemFont(ofSize: 11, weight: .medium)
+        intensityLabel.textColor = .secondaryLabelColor
+        intensityLabel.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(intensityLabel)
+
+        let slider = NSSlider(value: Double(Prefs.greenGlow) * 100, minValue: 0, maxValue: 100,
+                              target: nil, action: nil)
+        slider.translatesAutoresizingMaskIntoConstraints = false
+        slider.isContinuous = true
+        let sliderHandler = SettingsHandler {
+            Prefs.greenGlow = slider.doubleValue / 100
+            self.glowValue.stringValue = "\(Int(slider.doubleValue))%"
+            self.refreshPreview()
+        }
+        handlers.append(sliderHandler)
+        slider.target = sliderHandler
+        slider.action = #selector(SettingsHandler.fire)
+        addSubview(slider)
+
+        glowValue = NSTextField(labelWithString: "\(Int(Prefs.greenGlow * 100))%")
+        glowValue.font = .systemFont(ofSize: 11, weight: .medium)
+        glowValue.textColor = .secondaryLabelColor
+        glowValue.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(glowValue)
+        let glowLabel = NSTextField(labelWithString: "Green glow")
+        glowLabel.font = .systemFont(ofSize: 11, weight: .medium)
+        glowLabel.textColor = .secondaryLabelColor
+        glowLabel.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(glowLabel)
+
+        func fit(_ v: NSView) {
+            v.translatesAutoresizingMaskIntoConstraints = false
+        }
+        [preview, grid, intensity, intensityLabel, slider, glowValue, glowLabel].forEach(fit)
+
+        NSLayoutConstraint.activate([
+            grid.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 14),
+            grid.topAnchor.constraint(equalTo: topAnchor, constant: 12),
+            preview.leadingAnchor.constraint(equalTo: grid.trailingAnchor, constant: 12),
+            preview.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -14),
+            preview.topAnchor.constraint(equalTo: topAnchor, constant: 10),
+            preview.bottomAnchor.constraint(equalTo: slider.topAnchor, constant: -10),
+            preview.widthAnchor.constraint(lessThanOrEqualToConstant: 190),
+            grid.bottomAnchor.constraint(lessThanOrEqualTo: slider.topAnchor, constant: -8),
+
+            intensityLabel.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 14),
+            intensityLabel.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -14),
+            intensity.leadingAnchor.constraint(equalTo: intensityLabel.trailingAnchor, constant: 8),
+            intensity.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -8),
+
+            glowLabel.leadingAnchor.constraint(equalTo: intensity.trailingAnchor, constant: 18),
+            glowLabel.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -14),
+            slider.leadingAnchor.constraint(equalTo: glowLabel.trailingAnchor, constant: 8),
+            slider.widthAnchor.constraint(equalToConstant: 130),
+            slider.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -10),
+            glowValue.leadingAnchor.constraint(equalTo: slider.trailingAnchor, constant: 6),
+            glowValue.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -14)
+        ])
+        styleSelection()
+    }
+
+    required init?(coder: NSCoder) { fatalError() }
+
+    private func styleCard(_ style: DeviceStyle) -> NSView {
+        let container = NSView()
+        container.translatesAutoresizingMaskIntoConstraints = false
+        container.wantsLayer = true
+        container.layer?.cornerRadius = 8
+
+        let title = NSTextField(labelWithString: style.title)
+        title.font = .systemFont(ofSize: 11.5, weight: .semibold)
+        title.textColor = .white
+        title.translatesAutoresizingMaskIntoConstraints = false
+        let blurb = NSTextField(labelWithString: style.blurb)
+        blurb.font = .systemFont(ofSize: 9.5)
+        blurb.textColor = .secondaryLabelColor
+        blurb.lineBreakMode = .byTruncatingTail
+        blurb.translatesAutoresizingMaskIntoConstraints = false
+        container.addSubview(title)
+        container.addSubview(blurb)
+
+        let button = NSButton(title: style.title, target: nil, action: nil)
+        button.isBordered = false
+        button.attributedTitle = NSAttributedString(string: "", attributes: [:])
+        button.translatesAutoresizingMaskIntoConstraints = false
+        let handler = SettingsHandler { [weak self] in
+            Prefs.deviceStyle = style
+            self?.styleSelection()
+            self?.refreshPreview(pulse: true)
+        }
+        handlers.append(handler)
+        button.target = handler
+        button.action = #selector(SettingsHandler.fire)
+        container.addSubview(button)
+
+        NSLayoutConstraint.activate([
+            title.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 10),
+            title.topAnchor.constraint(equalTo: container.topAnchor, constant: 8),
+            blurb.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 10),
+            blurb.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -8),
+            blurb.topAnchor.constraint(equalTo: title.bottomAnchor, constant: 2),
+            button.leadingAnchor.constraint(equalTo: container.leadingAnchor),
+            button.trailingAnchor.constraint(equalTo: container.trailingAnchor),
+            button.topAnchor.constraint(equalTo: container.topAnchor),
+            button.bottomAnchor.constraint(equalTo: container.bottomAnchor),
+            container.heightAnchor.constraint(equalToConstant: 48),
+            container.widthAnchor.constraint(equalToConstant: 148)
+        ])
+        cards[style] = container
+        return container
+    }
+
+    private func styleSelection() {
+        for (style, view) in cards {
+            let on = style == Prefs.deviceStyle
+            view.layer?.backgroundColor = (on
+                ? Omnitrix.lime.withAlphaComponent(0.14).cgColor
+                : NSColor(calibratedWhite: 1, alpha: 0.05).cgColor)
+            view.layer?.borderWidth = on ? 1.2 : 1
+            view.layer?.borderColor = (on
+                ? Omnitrix.lime.withAlphaComponent(0.8).cgColor
+                : NSColor(calibratedWhite: 1, alpha: 0.10).cgColor)
+        }
+    }
+
+    private func refreshPreview(pulse: Bool = false) {
+        preview.deviceStyle = Prefs.deviceStyle
+        preview.needsDisplay = true
+        if pulse { preview.startDeviceAnimation(pulse: true) }
+    }
+
+    override func layout() {
+        super.layout()
+        preview.center = NSPoint(x: preview.bounds.midX, y: preview.bounds.midY)
+        preview.needsDisplay = true
+    }
+}
+
+/// Small target-bridge for Settings controls created outside the window class.
+final class SettingsHandler: NSObject {
+    private let action: () -> Void
+    init(_ action: @escaping () -> Void) { self.action = action }
+    @objc func fire() { action() }
+}
+
+final class FlippedDocumentView: NSView {
     override var isFlipped: Bool { true }
 }
 
@@ -771,6 +981,13 @@ final class SettingsWindow: NSWindowController, NSSearchFieldDelegate {
                 Prefs.wheelStyle = index == 0 ? .fan : .rings
             }), to: list)
         append(noteRow("Fan shows one surface at a time. Rings shows all three surfaces together."), to: list)
+
+        let deviceCard = DeviceStyleCard()
+        deviceCard.translatesAutoresizingMaskIntoConstraints = false
+        append(deviceCard, to: list)
+        NSLayoutConstraint.activate([
+            deviceCard.widthAnchor.constraint(equalTo: list.widthAnchor, constant: -30)
+        ])
 
         append(divider(), to: list)
         append(sectionHeader("General"), to: list)

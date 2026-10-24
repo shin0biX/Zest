@@ -106,6 +106,7 @@ final class OverlayController {
         let wheel = WheelView(frame: NSRect(origin: .zero, size: screen.frame.size))
         wheel.autoresizingMask = [.width, .height]
         wheel.style = Prefs.wheelStyle
+        wheel.deviceStyle = Prefs.deviceStyle
         wheel.surfaces = Catalog.surfaces(for: context.urls)
         wheel.emphasize(mode)
         wheel.count = context.urls.count
@@ -183,6 +184,8 @@ final class OverlayController {
     func close() {
         closeWork?.cancel()
         closeWork = nil
+        // Petals fold back into the hub while the panel fades.
+        wheel?.startFoldAnimation()
         // State tears down immediately; the panel itself fades out over a
         // short, controlled collapse so `isOpen` flips at once.
         if let fading = panel {
@@ -356,6 +359,36 @@ final class WheelView: NSView {
     /// Drawing and hit-testing both read this array.
     private(set) var fanPetals: [FanPetalGeometry] = []
 
+    /// Device appearance. Presentation only: it selects material and motion
+    /// variants inside the drawing code and never touches geometry,
+    /// hit-testing, or the catalog.
+    var deviceStyle: DeviceStyle = .transformation {
+        didSet { needsDisplay = true }
+    }
+
+    /// Every lime accent alpha in the renderer scales with this (0…1).
+    var glow: CGFloat { CGFloat(Prefs.greenGlow) }
+
+    /// Motion budget: Reduce Motion (system) always clamps to the reduced
+    /// profile regardless of the stored preference.
+    private var motionReduced: Bool {
+        reduceMotion || Prefs.animationIntensity == .reduced
+    }
+    private var unfoldDuration: TimeInterval {
+        Prefs.animationIntensity == .full ? 0.26 : (motionReduced ? 0.10 : 0.18)
+    }
+    private var unfoldStagger: TimeInterval {
+        Prefs.animationIntensity == .full ? 0.012 : (motionReduced ? 0.004 : 0.008)
+    }
+    private var pulseEnabled: Bool {
+        !motionReduced
+    }
+    /// The rotating bezel ticks only turn under the Full profile.
+    private var rotationEnabled: Bool {
+        !reduceMotion && Prefs.animationIntensity == .full
+            && (deviceStyle == .classic || deviceStyle == .transformation)
+    }
+
     /// Fan geometry scale. The overlay uses 1; the welcome preview shrinks the
     /// same drawing to fit a 370-point card without a second renderer.
     var fanScale: CGFloat = 1 {
@@ -416,23 +449,53 @@ final class WheelView: NSView {
     /// 0…1 unfold progress for a petal, staggered outward from index 0.
     func unfoldPhase(for index: Int) -> CGFloat {
         guard let start = unfoldDate else { return 1 }
-        let stagger = TimeInterval(index) * 0.012
-        let t = CGFloat(max(0, (-start.timeIntervalSinceNow - stagger) / 0.26))
+        let stagger = TimeInterval(index) * unfoldStagger
+        let t = CGFloat(max(0, (-start.timeIntervalSinceNow - stagger) / unfoldDuration))
         guard t < 1 else { return 1 }
         return 1 - pow(1 - t, 3)
     }
 
+    /// Reverse of the unfold, used while the overlay fades on close.
+    private var foldDate: Date?
+    func foldPhase(for index: Int) -> CGFloat {
+        guard let start = foldDate else { return 0 }
+        let reverse = TimeInterval(max(0, fanPetals.count - 1 - index)) * unfoldStagger
+        let t = CGFloat(max(0, (-start.timeIntervalSinceNow - reverse) / unfoldDuration))
+        guard t < 1 else { return 1 }
+        return t
+    }
+
     func startDeviceAnimation(pulse: Bool) {
         guard window != nil, !reduceMotion else { return }
-        if pulse { activationDate = Date() }
+        foldDate = nil
+        if pulse, pulseEnabled { activationDate = Date() }
         unfoldDate = Date()
+        animTimer?.invalidate()
+        // The timer also carries the bezel rotation for a short window after
+        // activation; then the device settles and redraws stop.
+        let rotationWindow: TimeInterval = rotationEnabled ? 2.2 : 0
+        let deadline = Date().addingTimeInterval(max(0.5, unfoldDuration
+            + TimeInterval(64) * unfoldStagger + rotationWindow))
+        let timer = Timer(timeInterval: 1.0 / 60.0, repeats: true) { [weak self] t in
+            guard let self else { t.invalidate(); return }
+            self.needsDisplay = true
+            if Date() > deadline, self.foldDate == nil {
+                t.invalidate()
+            }
+        }
+        RunLoop.main.add(timer, forMode: .common)
+        animTimer = timer
+    }
+
+    /// Petals fold back into the hub while the panel fades out.
+    func startFoldAnimation() {
+        guard window != nil, !motionReduced else { return }
+        foldDate = Date()
         animTimer?.invalidate()
         let timer = Timer(timeInterval: 1.0 / 60.0, repeats: true) { [weak self] t in
             guard let self else { t.invalidate(); return }
             self.needsDisplay = true
-            if self.activationPhase >= 1, self.unfoldPhase(for: 63) >= 1 {
-                t.invalidate()
-            }
+            if self.foldPhase(for: 0) >= 1 { t.invalidate() }
         }
         RunLoop.main.add(timer, forMode: .common)
         animTimer = timer
@@ -839,13 +902,16 @@ final class WheelView: NSView {
                                         Omnitrix.limeGlass],
                                atLocations: [0, 0.6, 1], colorSpace: .deviceRGB)?
                         .draw(in: path.bounds, angle: 90)
+                } else if deviceStyle == .glass {
+                    NSColor(calibratedWhite: emphasized ? 0.16 : 0.11, alpha: 0.90).setFill()
+                    path.fill()
                 } else {
                     NSColor(calibratedWhite: emphasized ? 0.13 : 0.08, alpha: 0.97).setFill()
                     path.fill()
                 }
                 let stroke = hover
                     ? Omnitrix.lime
-                    : Omnitrix.lime.withAlphaComponent(emphasized ? 0.32 : 0.14)
+                    : Omnitrix.lime.withAlphaComponent((emphasized ? 0.32 : 0.14) * glow)
                 stroke.setStroke()
                 path.lineWidth = hover ? 1.4 : 1
                 path.stroke()
@@ -869,14 +935,25 @@ final class WheelView: NSView {
         NSColor(calibratedWhite: 1, alpha: 0.16).setStroke()
         rim.lineWidth = 1.5
         rim.stroke()
-        // Green power seam just inside the dial's outer edge.
-        let seam = NSBezierPath(ovalIn: NSRect(x: center.x - outerRadius + 3,
-                                               y: center.y - outerRadius + 3,
-                                               width: (outerRadius - 3) * 2,
-                                               height: (outerRadius - 3) * 2))
-        Omnitrix.lime.withAlphaComponent(0.26).setStroke()
-        seam.lineWidth = 1.2
-        seam.stroke()
+        // Green power seam just inside the dial's outer edge — mechanical
+        // styles only, scaled by the glow preference.
+        if deviceStyle == .classic || deviceStyle == .transformation {
+            let seam = NSBezierPath(ovalIn: NSRect(x: center.x - outerRadius + 3,
+                                                   y: center.y - outerRadius + 3,
+                                                   width: (outerRadius - 3) * 2,
+                                                   height: (outerRadius - 3) * 2))
+            Omnitrix.lime.withAlphaComponent(0.26 * glow).setStroke()
+            seam.lineWidth = 1.2
+            seam.stroke()
+        } else if deviceStyle == .glass {
+            let seam = NSBezierPath(ovalIn: NSRect(x: center.x - outerRadius + 3,
+                                                   y: center.y - outerRadius + 3,
+                                                   width: (outerRadius - 3) * 2,
+                                                   height: (outerRadius - 3) * 2))
+            Omnitrix.lime.withAlphaComponent(0.12 * glow).setStroke()
+            seam.lineWidth = 1.0
+            seam.stroke()
+        }
     }
 
     // MARK: Fan wheel
@@ -918,9 +995,10 @@ final class WheelView: NSView {
             let petal = fanPetals[index]
             let hover = hovered == WheelHit(ring: 0, index: index)
 
-            // Unfold: petals grow out of the hub with a short stagger. The
-            // transform is drawing-only; the hit-test paths stay settled.
-            let phase = unfoldPhase(for: index)
+            // Unfold: petals grow out of the hub with a short stagger, and
+            // fold back on close. Both transforms are drawing-only; the
+            // hit-test paths stay settled.
+            let phase = unfoldPhase(for: index) * (1 - foldPhase(for: index))
             guard phase > 0.01 else { continue }
             let scale = 0.55 + 0.45 * phase
             NSGraphicsContext.saveGraphicsState()
@@ -938,15 +1016,38 @@ final class WheelView: NSView {
         drawFanHub()
     }
 
-    /// The segmented metallic bezel: a band of arc segments just outside the
-    /// petals, each with a fine green inset so the device reads as powered.
+    /// The bezel just outside the petals. Minimal skips it, Liquid Glass
+    /// draws one thin luminous ring, and the mechanical styles draw segmented
+    /// metal whose green insets light up in sequence during activation.
     private func drawFanBezel(count: Int) {
+        guard deviceStyle != .minimal else { return }
         let bandInner = fanOuter + 2 * fanScale
         let bandOuter = min(fanOuter + 12 * fanScale, Self.fanOuterRadius * fanScale + 12 * fanScale)
         guard bandOuter > bandInner, count > 0 else { return }
+
+        if deviceStyle == .glass {
+            let ring = NSBezierPath(ovalIn: NSRect(
+                x: center.x - (bandInner + 2 * fanScale),
+                y: center.y - (bandInner + 2 * fanScale),
+                width: (bandInner + 2 * fanScale) * 2,
+                height: (bandInner + 2 * fanScale) * 2))
+            NSColor.white.withAlphaComponent(0.10).setStroke()
+            ring.lineWidth = 2.4 * max(0.7, fanScale)
+            ring.stroke()
+            Omnitrix.lime.withAlphaComponent(0.12 * glow).setStroke()
+            ring.lineWidth = 1.1 * max(0.7, fanScale)
+            ring.stroke()
+            return
+        }
+
         let step = CGFloat.pi * 2 / CGFloat(count)
         let gap: CGFloat = 0.055
-        let pulseBoost = CGFloat(1 - activationPhase) * 0.45
+        let activation = activationPhase
+        // Sequential illumination: segment i lights as the pulse reaches it.
+        let sweep: (Int) -> CGFloat = { index in
+            let reach = activation * CGFloat(count)
+            return max(0, min(1, reach - CGFloat(index)))
+        }
 
         for index in 0..<count {
             let a0 = -CGFloat.pi / 2 + CGFloat(index) * step + gap
@@ -961,20 +1062,38 @@ final class WheelView: NSView {
             path.close()
             NSGradient(colors: [Omnitrix.metalLight, Omnitrix.metalDark])?
                 .draw(in: path.bounds, angle: 90)
-            path.addClip()
             NSColor.black.withAlphaComponent(0.25).setFill()
             path.fill()
+            let lit = sweep(index)
+            if lit > 0.01 {
+                Omnitrix.lime.withAlphaComponent((0.22 + 0.45 * lit) * glow).setFill()
+                let insetPath = NSBezierPath()
+                let r = bandInner + 1.6 * fanScale
+                insetPath.appendArc(withCenter: center, radius: r,
+                                    startAngle: a0 * 180 / .pi,
+                                    endAngle: a1 * 180 / .pi, clockwise: false)
+                insetPath.lineWidth = 1.6 * max(0.7, fanScale)
+                insetPath.stroke()
+            }
         }
 
-        // Green inset ring, brighter while the activation pulse travels.
-        let inset = NSBezierPath(ovalIn: NSRect(
-            x: center.x - (bandInner + 1.5 * fanScale),
-            y: center.y - (bandInner + 1.5 * fanScale),
-            width: (bandInner + 1.5 * fanScale) * 2,
-            height: (bandInner + 1.5 * fanScale) * 2))
-        Omnitrix.lime.withAlphaComponent(0.30 + pulseBoost).setStroke()
-        inset.lineWidth = 1.2 * max(0.7, fanScale)
-        inset.stroke()
+        // Rotating ticks on the inset ring — mechanical life under Full.
+        if rotationEnabled, let start = activationDate {
+            let elapsed = -start.timeIntervalSinceNow
+            let angle = elapsed * 0.35
+            let tickCount = count
+            for index in 0..<tickCount {
+                let a = -CGFloat.pi / 2 + CGFloat(index) * step + angle
+                let p0 = fanPoint(a, bandInner + 0.8 * fanScale)
+                let p1 = fanPoint(a, bandInner + 2.6 * fanScale)
+                let tick = NSBezierPath()
+                tick.move(to: p0)
+                tick.line(to: p1)
+                Omnitrix.lime.withAlphaComponent(0.5 * glow).setStroke()
+                tick.lineWidth = 1.1 * max(0.7, fanScale)
+                tick.stroke()
+            }
+        }
     }
 
     /// A single green pulse travels from the hub to the bezel on activation.
@@ -1001,7 +1120,7 @@ final class WheelView: NSView {
         let shadow = NSShadow()
         if hover {
             shadow.shadowColor = NSColor(srgbRed: 0.20, green: 0.62, blue: 0.10,
-                                         alpha: 0.52)
+                                         alpha: 0.30 + 0.28 * glow)
             shadow.shadowBlurRadius = 13 * petal.scale
         } else {
             shadow.shadowColor = NSColor.black.withAlphaComponent(0.55)
@@ -1023,16 +1142,33 @@ final class WheelView: NSView {
         NSGraphicsContext.saveGraphicsState()
         petal.path.addClip()
         if hover {
-            // Selected: translucent green activation glass.
+            // Selected: translucent green activation glass, shared by every
+            // style — green always means the active petal.
             NSGradient(colors: [
                 Omnitrix.limeDark,
                 Omnitrix.limeDeep,
                 Omnitrix.limeGlass
             ], atLocations: [0, 0.55, 1], colorSpace: .deviceRGB)?
                 .draw(in: petal.path.bounds, angle: petal.angle * 180 / .pi)
+        } else if deviceStyle == .minimal {
+            // Minimal: matte graphite, no glass theatre.
+            NSGradient(colors: [
+                NSColor(srgbRed: 0.114, green: 0.118, blue: 0.122, alpha: 1),
+                NSColor(srgbRed: 0.145, green: 0.149, blue: 0.155, alpha: 1),
+                NSColor(srgbRed: 0.176, green: 0.180, blue: 0.188, alpha: 1)
+            ], atLocations: [0, 0.45, 1], colorSpace: .deviceRGB)?
+                .draw(in: petal.path.bounds, angle: petal.angle * 180 / .pi)
+        } else if deviceStyle == .glass {
+            // Liquid Glass: lighter translucent smoky glass.
+            NSGradient(colors: [
+                NSColor(srgbRed: 0.145, green: 0.157, blue: 0.152, alpha: 1),
+                NSColor(srgbRed: 0.196, green: 0.204, blue: 0.204, alpha: 1),
+                NSColor(srgbRed: 0.235, green: 0.243, blue: 0.243, alpha: 1)
+            ], atLocations: [0, 0.45, 1], colorSpace: .deviceRGB)?
+                .draw(in: petal.path.bounds, angle: petal.angle * 180 / .pi)
         } else {
-            // Unselected: smoky graphite glass, slightly green-tinted at the
-            // neck where the device's light bleeds out.
+            // Classic / Transformation: smoky graphite glass, slightly green
+            // at the neck where the device's light bleeds out.
             NSGradient(colors: [
                 NSColor(srgbRed: 0.118, green: 0.133, blue: 0.125, alpha: 1),
                 NSColor(srgbRed: 0.161, green: 0.171, blue: 0.169, alpha: 1),
@@ -1041,33 +1177,44 @@ final class WheelView: NSView {
                 .draw(in: petal.path.bounds, angle: petal.angle * 180 / .pi)
         }
 
-        // Glass depth: dark pooling where the neck meets the hub.
-        let neckCenter = fanPoint(petal.angle, petal.sideInner + petal.length * 0.05)
-        if let neck = NSGradient(colors: [
-            NSColor.black.withAlphaComponent(hover ? 0.12 : 0.24), NSColor.clear
-        ]) {
-            neck.draw(fromCenter: neckCenter, radius: 0,
-                      toCenter: neckCenter, radius: petal.length * 0.34, options: [])
-        }
+        if deviceStyle != .minimal {
+            // Glass depth: dark pooling where the neck meets the hub.
+            let neckCenter = fanPoint(petal.angle, petal.sideInner + petal.length * 0.05)
+            if let neck = NSGradient(colors: [
+                NSColor.black.withAlphaComponent(hover ? 0.12 : 0.24), NSColor.clear
+            ]) {
+                neck.draw(fromCenter: neckCenter, radius: 0,
+                          toCenter: neckCenter, radius: petal.length * 0.34, options: [])
+            }
 
-        // Refracted light on the rounded cap: lime on the active petal,
-        // neutral glass on the rest.
-        let bloomCenter = fanPoint(petal.angle, petal.sideOuter - 3 * petal.scale)
-        let bloomColor = hover
-            ? NSColor(srgbRed: 0.659, green: 0.953, blue: 0.420, alpha: 0.26)
-            : NSColor.white.withAlphaComponent(0.13)
-        if let bloom = NSGradient(colors: [bloomColor, NSColor.clear]) {
-            bloom.draw(fromCenter: bloomCenter, radius: 0,
-                       toCenter: bloomCenter, radius: petal.outerHalf * 2.6, options: [])
-        }
+            // Refracted light on the rounded cap: lime on the active petal,
+            // neutral glass on the rest.
+            let bloomCenter = fanPoint(petal.angle, petal.sideOuter - 3 * petal.scale)
+            let bloomColor = hover
+                ? NSColor(srgbRed: 0.659, green: 0.953, blue: 0.420,
+                          alpha: 0.10 + 0.22 * glow)
+                : NSColor.white.withAlphaComponent(
+                    deviceStyle == .glass ? 0.17 : 0.13)
+            if let bloom = NSGradient(colors: [bloomColor, NSColor.clear]) {
+                bloom.draw(fromCenter: bloomCenter, radius: 0,
+                           toCenter: bloomCenter, radius: petal.outerHalf * 2.6, options: [])
+            }
 
-        // A whisper of shared sheen so the whole flower is lit from one side.
-        if let sheen = NSGradient(colors: [
-            NSColor.white.withAlphaComponent(hover ? 0.08 : 0.06), .clear
-        ]) {
-            sheen.draw(in: petal.path.bounds, angle: 95)
+            // A whisper of shared sheen so the whole flower is lit from one side.
+            if let sheen = NSGradient(colors: [
+                NSColor.white.withAlphaComponent(hover ? 0.08 : 0.06), .clear
+            ]) {
+                sheen.draw(in: petal.path.bounds, angle: 95)
+            }
         }
         NSGraphicsContext.restoreGraphicsState()
+
+        if deviceStyle == .glass, !hover {
+            // Liquid Glass: a faint green edge kiss on every petal.
+            Omnitrix.lime.withAlphaComponent(0.12 * glow).setStroke()
+            petal.path.lineWidth = 0.7 * petal.scale
+            petal.path.stroke()
+        }
 
         let border = hover ? Omnitrix.lime
             : NSColor(srgbRed: 0.290, green: 0.298, blue: 0.306, alpha: 1)
@@ -1192,33 +1339,39 @@ final class WheelView: NSView {
         ])?.draw(in: wellRect, angle: 90)
 
         // The Omnitrix hourglass: two green triangles meeting at the centre,
-        // faint enough to sit beneath the file information.
-        let h = well * 0.94
-        let halfW = h * 0.46
-        let top = NSBezierPath()
-        top.move(to: NSPoint(x: center.x - halfW, y: center.y + h / 2))
-        top.line(to: NSPoint(x: center.x + halfW, y: center.y + h / 2))
-        top.line(to: NSPoint(x: center.x, y: center.y))
-        top.close()
-        let bottom = NSBezierPath()
-        bottom.move(to: NSPoint(x: center.x - halfW, y: center.y - h / 2))
-        bottom.line(to: NSPoint(x: center.x + halfW, y: center.y - h / 2))
-        bottom.line(to: NSPoint(x: center.x, y: center.y))
-        bottom.close()
-        let pulse = CGFloat(0.10 + 0.14 * (1 - activationPhase))
-        Omnitrix.lime.withAlphaComponent(pulse).setFill()
-        top.fill()
-        bottom.fill()
-        Omnitrix.lime.withAlphaComponent(pulse * 0.6).setStroke()
-        top.lineWidth = 1
-        top.stroke()
-        bottom.lineWidth = 1
-        bottom.stroke()
+        // faint enough to sit beneath the file information. Classic carries a
+        // brighter core; Minimal and Liquid Glass keep a clean puck.
+        if deviceStyle == .classic || deviceStyle == .transformation {
+            let h = well * 0.94
+            let halfW = h * 0.46
+            let top = NSBezierPath()
+            top.move(to: NSPoint(x: center.x - halfW, y: center.y + h / 2))
+            top.line(to: NSPoint(x: center.x + halfW, y: center.y + h / 2))
+            top.line(to: NSPoint(x: center.x, y: center.y))
+            top.close()
+            let bottom = NSBezierPath()
+            bottom.move(to: NSPoint(x: center.x - halfW, y: center.y - h / 2))
+            bottom.line(to: NSPoint(x: center.x + halfW, y: center.y - h / 2))
+            bottom.line(to: NSPoint(x: center.x, y: center.y))
+            bottom.close()
+            let base = deviceStyle == .classic
+                ? CGFloat(0.14 + 0.20 * (1 - activationPhase))
+                : CGFloat(0.10 + 0.14 * (1 - activationPhase))
+            let pulse = base * glow
+            Omnitrix.lime.withAlphaComponent(pulse).setFill()
+            top.fill()
+            bottom.fill()
+            Omnitrix.lime.withAlphaComponent(pulse * 0.6).setStroke()
+            top.lineWidth = 1
+            top.stroke()
+            bottom.lineWidth = 1
+            bottom.stroke()
+        }
         NSGraphicsContext.restoreGraphicsState()
 
         // Green hairline where the rim meets the well — the powered seam.
         let seam = NSBezierPath(ovalIn: wellRect.insetBy(dx: -0.75, dy: -0.75))
-        Omnitrix.lime.withAlphaComponent(0.30).setStroke()
+        Omnitrix.lime.withAlphaComponent(0.30 * glow).setStroke()
         seam.lineWidth = 1.1
         seam.stroke()
 

@@ -56,6 +56,42 @@ enum AppearanceStyle: String, CaseIterable {
     }
 }
 
+/// Device appearance styles. Presentation only — they never change the
+/// catalog, geometry, or interaction semantics.
+enum DeviceStyle: String, CaseIterable {
+    case minimal, classic, glass, transformation
+
+    var title: String {
+        switch self {
+        case .minimal: return "Minimal"
+        case .classic: return "Classic Omnitrix"
+        case .glass: return "Liquid Glass"
+        case .transformation: return "Transformation"
+        }
+    }
+
+    var blurb: String {
+        switch self {
+        case .minimal: return "Compact graphite wheel, restrained motion"
+        case .classic: return "Mechanical shell, segmented bezel, green core"
+        case .glass: return "Translucent petals with green edge light"
+        case .transformation: return "Full staged activation and unfold"
+        }
+    }
+}
+
+enum AnimationIntensity: String, CaseIterable {
+    case reduced, balanced, full
+
+    var title: String {
+        switch self {
+        case .reduced: return "Reduced"
+        case .balanced: return "Balanced"
+        case .full: return "Full"
+        }
+    }
+}
+
 enum WheelStyle: String, CaseIterable {
     case fan, rings
 
@@ -209,6 +245,9 @@ enum Prefs {
             "keyboardControl": false,
             "appearance": AppearanceStyle.glass.rawValue,
             "wheelStyle": WheelStyle.rings.rawValue,
+            "deviceStyle": DeviceStyle.transformation.rawValue,
+            "animationIntensity": AnimationIntensity.full.rawValue,
+            "greenGlow": 0.65,
             "floatBehavior": FloatBehavior.newFloat.rawValue,
             "terminalApp": TerminalChoice.terminal.rawValue,
             "launchAtLogin": false,
@@ -271,6 +310,35 @@ enum Prefs {
     static var wheelStyle: WheelStyle {
         get { WheelStyle(rawValue: defaults.string(forKey: "wheelStyle") ?? "") ?? .rings }
         set { defaults.set(newValue.rawValue, forKey: "wheelStyle") }
+    }
+
+    /// Selected device appearance. Invalid or missing values fall back to
+    /// the development default (Transformation).
+    static var deviceStyle: DeviceStyle {
+        get { DeviceStyle(rawValue: defaults.string(forKey: "deviceStyle") ?? "")
+            ?? .transformation }
+        set { defaults.set(newValue.rawValue, forKey: "deviceStyle") }
+    }
+
+    static var animationIntensity: AnimationIntensity {
+        get { AnimationIntensity(rawValue: defaults.string(forKey: "animationIntensity") ?? "")
+            ?? .full }
+        set { defaults.set(newValue.rawValue, forKey: "animationIntensity") }
+    }
+
+    /// Green illumination, 0…1. Scales every accent alpha in the renderer.
+    static var greenGlow: Double {
+        get {
+            let stored = defaults.object(forKey: "greenGlow")
+            if let value = stored as? Double, value.isFinite {
+                return min(1, max(0, value))
+            }
+            if let value = stored as? Int {
+                return min(1, max(0, Double(value)))
+            }
+            return 0.65
+        }
+        set { defaults.set(min(1, max(0, newValue)), forKey: "greenGlow") }
     }
 
     static var floatBehavior: FloatBehavior {

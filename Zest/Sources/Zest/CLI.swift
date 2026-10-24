@@ -101,6 +101,7 @@ enum CLI {
         var hover: Int?
         var mode: WheelMode = .convert
         var style: WheelStyle = Prefs.wheelStyle
+        var device: DeviceStyle = Prefs.deviceStyle
         var index = 0
         while index < args.count {
             let arg = args[index]
@@ -133,6 +134,22 @@ enum CLI {
                 }
                 style = parsed
                 index += 2
+            case "--device":
+                guard index + 1 < args.count,
+                      let parsed = DeviceStyle(rawValue: args[index + 1]) else {
+                    err("--device needs minimal, classic, glass, or transformation")
+                    return 2
+                }
+                device = parsed
+                index += 2
+            case "--glow":
+                guard index + 1 < args.count, let parsed = Double(args[index + 1]),
+                      (0...100).contains(parsed) else {
+                    err("--glow needs 0–100")
+                    return 2
+                }
+                Prefs.greenGlow = parsed / 100
+                index += 2
             default:
                 if arg.hasPrefix("-") {
                     err("Unknown option: \(arg)")
@@ -152,6 +169,7 @@ enum CLI {
         let side: CGFloat = 1000
         let view = WheelView(frame: NSRect(x: 0, y: 0, width: side, height: side))
         view.style = style
+        view.deviceStyle = device
         view.surfaces = Catalog.surfaces(for: [snapshotURL])
         view.emphasize(mode)
         view.center = NSPoint(x: side / 2, y: side / 2)
