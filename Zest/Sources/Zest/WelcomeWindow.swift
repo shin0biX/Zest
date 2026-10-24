@@ -2,10 +2,9 @@ import AppKit
 
 // MARK: - Welcome
 
-/// Five-page Getting Started window in the Omnitrix × Liquid-Glass system.
-/// The first page is the device hero with a live, switchable wheel preview;
-/// pages two through four walk the three surfaces and their modifiers; the
-/// last page explains folder access.
+/// Five-page Getting Started window. The first page is the orange welcome;
+/// pages two through four show the fan wheel in each mode and name the
+/// modifier that arms it; the last page explains folder access.
 final class WelcomeWindow: NSWindowController {
     static let shared = WelcomeWindow()
 
@@ -74,84 +73,35 @@ final class WelcomeWindow: NSWindowController {
             backdrop.bottomAnchor.constraint(equalTo: root.bottomAnchor)
         ])
 
-        // Left column: identity, workflow, actions.
-        let brand = text("ZEST", size: 13, weight: .heavy, color: Omnitrix.lime)
-        brand.attributedStringValue = NSAttributedString(
-            string: "ZEST", attributes: [.font: NSFont.systemFont(ofSize: 13, weight: .heavy),
-                                         .foregroundColor: Omnitrix.lime,
-                                         .kern: 3])
-        let title = text("Convert anything,\nright where it lives.", size: 27, weight: .bold,
-                         color: .white)
-        title.alignment = .left
-        title.maximumNumberOfLines = 2
+        let title = text("Welcome to Zest", size: 40, weight: .bold, color: .white)
+        title.alignment = .center
+        let subtitle = text("Convert anything, right where it lives.", size: 15,
+                            weight: .medium, color: NSColor(calibratedWhite: 1, alpha: 0.84))
+        subtitle.alignment = .center
 
-        func benefit(_ symbol: String, _ key: String, _ line: String) -> NSStackView {
-            let icon = NSImageView(image: NSImage(systemSymbolName: symbol,
-                                                  accessibilityDescription: nil) ?? NSImage())
-            icon.contentTintColor = Omnitrix.lime.withAlphaComponent(0.9)
-            icon.symbolConfiguration = NSImage.SymbolConfiguration(pointSize: 15, weight: .medium)
-            let keycap = KeycapView(text: key)
-            let label = text(line, size: 12, weight: .regular,
-                             color: NSColor(calibratedWhite: 1, alpha: 0.78))
-            let row = NSStackView(views: [icon, keycap, label])
-            row.orientation = .horizontal
-            row.alignment = .centerY
-            row.spacing = 8
-            return row
-        }
-        let rows = NSStackView(views: [
-            benefit("arrow.left.arrow.right", Prefs.convertKey.title,
-                    "Convert to any format"),
-            benefit("wand.and.stars", Prefs.toolsKey.title,
-                    "Run tools: crop, compress, redact…"),
-            benefit("bolt.fill", Prefs.actionsKey.title,
-                    "Act: AirDrop, copy, Terminal…")
+        let center = NSStackView(views: [title, subtitle])
+        center.orientation = .vertical
+        center.alignment = .centerX
+        center.spacing = 8
+        center.translatesAutoresizingMaskIntoConstraints = false
+        root.addSubview(center)
+        NSLayoutConstraint.activate([
+            center.centerXAnchor.constraint(equalTo: root.centerXAnchor),
+            center.centerYAnchor.constraint(equalTo: root.centerYAnchor, constant: -18),
+            title.widthAnchor.constraint(lessThanOrEqualTo: root.widthAnchor, constant: -80)
         ])
-        rows.orientation = .vertical
-        rows.alignment = .leading
-        rows.spacing = 10
 
-        let start = welcomeButton("Get Started", background: Omnitrix.lime,
-                                  foreground: NSColor(srgbRed: 0.06, green: 0.11, blue: 0.05, alpha: 1)) {
+        let start = welcomeButton("Get Started", background: .white,
+                                  foreground: NSColor(calibratedRed: 0.91, green: 0.35, blue: 0.13, alpha: 1)) {
             self.show(page: 1)
         }
-        let settings = welcomeButton("Settings",
-                                     background: NSColor(calibratedWhite: 1, alpha: 0.10),
-                                     foreground: .white) {
-            self.window?.orderOut(nil)
-            NotificationCenter.default.post(name: .zestOpenSettings, object: nil)
-        }
-        let buttons = NSStackView(views: [start, settings])
-        buttons.orientation = .horizontal
-        buttons.spacing = 10
-
-        let left = NSStackView(views: [brand, title, rows, buttons])
-        left.orientation = .vertical
-        left.alignment = .leading
-        left.spacing = 14
-        left.setCustomSpacing(6, after: brand)
-        left.setCustomSpacing(18, after: title)
-        left.setCustomSpacing(22, after: rows)
-        left.translatesAutoresizingMaskIntoConstraints = false
-        root.addSubview(left)
+        start.translatesAutoresizingMaskIntoConstraints = false
+        root.addSubview(start)
         NSLayoutConstraint.activate([
-            left.leadingAnchor.constraint(equalTo: root.leadingAnchor, constant: 44),
-            left.centerYAnchor.constraint(equalTo: root.centerYAnchor, constant: 0),
-            start.widthAnchor.constraint(equalToConstant: 128),
-            start.heightAnchor.constraint(equalToConstant: 34),
-            settings.heightAnchor.constraint(equalToConstant: 34)
-        ])
-
-        // Right: the device itself — a real WheelView the user can flip
-        // between the three surfaces.
-        let hero = DeviceHero()
-        hero.translatesAutoresizingMaskIntoConstraints = false
-        root.addSubview(hero)
-        NSLayoutConstraint.activate([
-            hero.leadingAnchor.constraint(equalTo: left.trailingAnchor, constant: 18),
-            hero.trailingAnchor.constraint(equalTo: root.trailingAnchor, constant: -30),
-            hero.centerYAnchor.constraint(equalTo: root.centerYAnchor, constant: -6),
-            hero.heightAnchor.constraint(equalToConstant: 330)
+            start.centerXAnchor.constraint(equalTo: root.centerXAnchor),
+            start.bottomAnchor.constraint(equalTo: root.bottomAnchor, constant: -44),
+            start.widthAnchor.constraint(equalToConstant: 148),
+            start.heightAnchor.constraint(equalToConstant: 36)
         ])
     }
 
@@ -239,7 +189,7 @@ final class WelcomeWindow: NSWindowController {
         let folder = NSImage(systemSymbolName: "folder.badge.gearshape",
                              accessibilityDescription: nil)
         let icon = NSImageView(image: folder ?? NSImage())
-        icon.contentTintColor = Omnitrix.lime
+        icon.contentTintColor = NSColor(calibratedRed: 0.96, green: 0.48, blue: 0.18, alpha: 1)
         icon.symbolConfiguration = NSImage.SymbolConfiguration(pointSize: 48, weight: .regular)
         icon.translatesAutoresizingMaskIntoConstraints = false
         icon.widthAnchor.constraint(equalToConstant: 58).isActive = true
@@ -255,7 +205,7 @@ final class WelcomeWindow: NSWindowController {
 
         let note = text("Nothing leaves this Mac. No network, no uploads, no telemetry.",
                         size: 11.5, weight: .medium,
-                        color: Omnitrix.limeBright.withAlphaComponent(0.95))
+                        color: NSColor(calibratedRed: 0.98, green: 0.58, blue: 0.28, alpha: 0.95))
 
         let open = welcomeButton("Open Home Folder", background: NSColor(calibratedWhite: 1, alpha: 0.10),
                                  foreground: .white) {
@@ -407,18 +357,11 @@ private final class WelcomeHandler: NSObject {
 
 private final class GradientBackdrop: NSView {
     override func draw(_ dirtyRect: NSRect) {
-        NSGradient(colors: [
-            NSColor(srgbRed: 0.118, green: 0.133, blue: 0.125, alpha: 1),
-            NSColor(srgbRed: 0.055, green: 0.063, blue: 0.059, alpha: 1)
-        ])?.draw(in: bounds, angle: -70)
-        // A restrained green bloom behind the device side.
-        if let bloom = NSGradient(colors: [
-            Omnitrix.limeDeep.withAlphaComponent(0.22), NSColor.clear
-        ]) {
-            let c = NSPoint(x: bounds.maxX - bounds.width * 0.22, y: bounds.midY)
-            bloom.draw(fromCenter: c, radius: 0, toCenter: c,
-                       radius: bounds.width * 0.42, options: [])
-        }
+        let gradient = NSGradient(colors: [
+            NSColor(calibratedRed: 0.98, green: 0.55, blue: 0.16, alpha: 1),
+            NSColor(calibratedRed: 0.89, green: 0.28, blue: 0.13, alpha: 1)
+        ])
+        gradient?.draw(in: bounds, angle: -28)
     }
 }
 
@@ -456,112 +399,6 @@ private final class KeycapView: NSView {
     }
 
     required init?(coder: NSCoder) { fatalError() }
-}
-
-// MARK: - Device hero (intro page)
-
-/// A real WheelView rendered inside the welcome card, with three pills that
-/// switch it between the app's actual surfaces. It is the same renderer the
-/// overlay uses, at a scale that fits the page.
-private final class DeviceHero: NSView {
-    private let wheel = WheelView(frame: .zero)
-    private let sample = DemoAsset.url()
-    private var surfaces: [(mode: WheelMode, choices: [WheelChoice])] = []
-
-    init() {
-        super.init(frame: .zero)
-        wantsLayer = true
-        layer?.backgroundColor = NSColor(calibratedWhite: 0, alpha: 0.14).cgColor
-        layer?.cornerRadius = 20
-        layer?.borderWidth = 1
-        layer?.borderColor = NSColor(calibratedWhite: 1, alpha: 0.08).cgColor
-
-        surfaces = Catalog.surfaces(for: [sample]).map {
-            (mode: $0.mode, choices: $0.choices)
-        }
-        wheel.translatesAutoresizingMaskIntoConstraints = false
-        wheel.style = .fan
-        wheel.fanScale = 0.62
-        wheel.surfaces = surfaces
-        wheel.emphasize(.tools)
-        wheel.count = 1
-        wheel.kind = .image
-        wheel.fileName = sample.lastPathComponent
-        wheel.fileFormat = sample.pathExtension.uppercased()
-        wheel.totalBytes = sample.fileSize
-        wheel.preview = true
-        addSubview(wheel)
-        NSLayoutConstraint.activate([
-            wheel.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 10),
-            wheel.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -10),
-            wheel.topAnchor.constraint(equalTo: topAnchor, constant: 26),
-            wheel.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -14)
-        ])
-
-        let seg = NSStackView()
-        seg.orientation = .horizontal
-        seg.spacing = 6
-        seg.translatesAutoresizingMaskIntoConstraints = false
-        addSubview(seg)
-        NSLayoutConstraint.activate([
-            seg.topAnchor.constraint(equalTo: topAnchor, constant: 8),
-            seg.centerXAnchor.constraint(equalTo: centerXAnchor)
-        ])
-        let modes: [(WheelMode, String)] = [(.tools, "Tools"), (.convert, "Convert"),
-                                            (.actions, "Actions")]
-        for (mode, label) in modes {
-            let pill = NSButton(title: label, target: nil, action: nil)
-            pill.isBordered = false
-            pill.wantsLayer = true
-            pill.layer?.cornerRadius = 9
-            pill.layer?.backgroundColor = NSColor(calibratedWhite: 1, alpha: 0.10).cgColor
-            pill.attributedTitle = NSAttributedString(
-                string: label,
-                attributes: [.font: NSFont.systemFont(ofSize: 10.5, weight: .semibold),
-                             .foregroundColor: NSColor(calibratedWhite: 1, alpha: 0.75)])
-            pill.translatesAutoresizingMaskIntoConstraints = false
-            pill.widthAnchor.constraint(equalToConstant: 62).isActive = true
-            pill.heightAnchor.constraint(equalToConstant: 20).isActive = true
-            let handler = WelcomeHandler { [weak self, weak pill] in
-                guard let self else { return }
-                self.wheel.emphasize(mode)
-                self.styleSelection(pill)
-                self.wheel.startDeviceAnimation(pulse: true)
-            }
-            handlers.append(handler)
-            pill.target = handler
-            pill.action = #selector(WelcomeHandler.fire)
-            seg.addArrangedSubview(pill)
-            if mode == .tools { styleSelection(pill) }
-            pills.append(pill)
-        }
-    }
-
-    private var handlers: [WelcomeHandler] = []
-    private var pills: [NSButton] = []
-
-    private func styleSelection(_ selected: NSButton?) {
-        for pill in pills {
-            let on = pill == selected
-            pill.layer?.backgroundColor = (on
-                ? Omnitrix.lime.withAlphaComponent(0.85)
-                : NSColor(calibratedWhite: 1, alpha: 0.10)).cgColor
-            pill.attributedTitle = NSAttributedString(
-                string: pill.title,
-                attributes: [.font: NSFont.systemFont(ofSize: 10.5, weight: .semibold),
-                             .foregroundColor: on
-                                 ? NSColor(srgbRed: 0.06, green: 0.11, blue: 0.05, alpha: 1)
-                                 : NSColor(calibratedWhite: 1, alpha: 0.75)])
-        }
-    }
-
-    required init?(coder: NSCoder) { fatalError() }
-
-    override func layout() {
-        super.layout()
-        wheel.center = NSPoint(x: wheel.bounds.midX, y: wheel.bounds.midY)
-        wheel.needsDisplay = true
-    }
 }
 
 // MARK: - Fan preview
