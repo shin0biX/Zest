@@ -5,7 +5,7 @@ pick a target from the wheel — the converted file lands next to the original.
 
 No windows, no uploads, no accounts. Everything runs on your Mac.
 
-![Convert wheel](assets/convert.png)
+![Rings wheel](assets/rings.png)
 
 ## How it works
 
@@ -14,35 +14,36 @@ No windows, no uploads, no accounts. Everything runs on your Mac.
    - <kbd>⇧ Shift</kbd> — convert to another format
    - <kbd>⌘ Command</kbd> — run a tool (crop, compress, redact, snapshot…)
    - <kbd>⌃ Control</kbd> — quick actions (copy, move, AirDrop, Terminal…)
-3. The wheel appears where you tapped; keep dragging onto a petal and release.
+3. The wheel appears where you tapped; keep dragging onto the ring you want and
+   release.
 
 The central hub shows the file you're holding — icon, filename, format, and size. Drop
-in a gap or the hub to cancel. Results are saved beside the originals, always.
+on the hub (or off the wheel) to cancel. Results are saved beside the originals, always.
 
-Two wheel styles ship, both floating over the desktop with no panel behind them:
+## The wheel
 
-**Concentric rings** *(the default)* — every surface visible at once:
-
-![Rings wheel](assets/rings.png)
+**Concentric rings** *(the default)* — every surface visible at once, floating over the
+desktop with no panel behind it:
 
 - The outer ring holds conversion formats, the middle ring the tools, the inner ring
-  the actions — so all of Zest's reach sits in one 576 pt dial.
+  the actions — all of Zest's reach in one 576 pt dial.
 - Tapping a modifier brightens that ring while the others stay live: the hub legend
   shows which ring maps to which key, and dropping on any ring commits that ring's
   pick, whichever modifier is currently armed.
-- The hub carries the file you're dragging — icon, name, format, size — and dropping
-  on it cancels.
+- Drop on the hub to cancel.
 
-**Petal fan** — one surface at a time as a compact flower of graphite-glass petals
-(shown above); tapping a different modifier rebuilds the fan in place. Some people
-prefer it for the bigger, upright labels; the rings dial keeps everything in one
+**Petal fan** — the alternate style: one surface at a time as a compact flower of
+graphite-glass petals, rebuilt in place when you tap a different modifier. Some people
+prefer it for its bigger, upright labels; the rings dial keeps everything in one
 glance.
+
+![Fan wheel](assets/tools.png)
 
 Switch styles in Settings → General → Wheel style.
 
-![Tools wheel](assets/tools.png)
-
 ## Formats
+
+![Convert fan](assets/convert.png)
 
 - **Images:** JPG · PNG · WebP · HEIC · TIFF · AVIF · BMP · GIF · PDF
 - **Video:** MP4 · MOV · MKV · WebM · AVI · WMV · GIF
@@ -64,7 +65,7 @@ snapshots (multi-frame) · trim · split · join · speed · GIF · mute · extr
 normalize · bleep · redact video · redact audio · audio → video · channels · sample
 rate · PDF merge / split / reorder / rotate / extract images · archive extract.
 
-![Actions wheel](assets/actions.png)
+![Actions fan](assets/actions.png)
 
 **Actions:** AirDrop · Float (park files in a small always-on-top panel) · copy ·
 move · copy path · open in Terminal · reveal in Finder.
@@ -73,9 +74,9 @@ move · copy path · open in Terminal · reveal in Finder.
 
 Five compact tabs live behind the status item:
 
-- **General** — modifiers, wheel style (petal fan or concentric rings, both
-  panel-free), feedback, collision policy (keep both / replace), Float behaviour,
-  Terminal app.
+- **General** — modifiers, wheel style (concentric rings by default, petal fan
+  optional — both panel-free), feedback, collision policy (keep both / replace),
+  Float behaviour, Terminal app.
 - **Formats** — per-format defaults: image quality and size, audio bitrate and depth,
   video quality and max height, GIF frame rate and width, PDF and EPUB layout.
 - **Compatibility** — a live input → output matrix generated from what your machine
@@ -88,13 +89,22 @@ Settings persist in `com.zest.app` and apply to every drag instantly.
 ## Requirements
 
 - macOS 13 Ventura or newer, Apple Silicon or Intel
-- Xcode command-line tools (`xcode-select --install`)
 - Optional, for media formats: Homebrew `ffmpeg` (audio/video conversion and tools)
   and `cwebp` (WebP output). Zest detects them at launch and hides what's missing.
 
 ## Installation
 
-Zest is a personal build distributed as source — there is no signed release binary.
+**Easiest** — grab the disk image from the [releases page](https://github.com/shin0biX/zest/releases/latest),
+open it, and drag Zest.app to Applications:
+
+- [Zest.dmg — latest release](https://github.com/shin0biX/zest/releases/latest/download/Zest.dmg)
+- It's a personal build without an Apple Developer certificate, so the first launch
+  needs a right-click → **Open** → **Open** (once), or
+  `xattr -cr /Applications/Zest.app` in Terminal.
+- Optional, for video/audio: `brew install ffmpeg`.
+
+**From source** — you'll need the Xcode command-line tools
+(`xcode-select --install`):
 
 ```sh
 git clone https://github.com/shin0biX/zest.git
@@ -104,9 +114,8 @@ open Zest.app       # launches in the menu bar — no Dock icon
 ```
 
 `build.sh` compiles the release binary, applies the app icon, and ad-hoc signs the
-bundle, so macOS runs it locally without a developer identity — no Gatekeeper dance,
-because the app was built on your machine. Zest then lives in the menu bar and can be
-enabled at login from Settings → General.
+bundle — no Gatekeeper dance, because the app was built on your machine. Zest then
+lives in the menu bar and can be enabled at login from Settings → General.
 
 Prefer a quick debug build instead?
 
@@ -126,7 +135,7 @@ Zest formats sample.png                      # what can this file become?
 Zest convert sample.png --to pdf             # images → PDF accepts several files
 Zest tool compress sample.png --params percent=50
 Zest tool redactVideo clip.mp4 --params x=40 y=30 w=160 h=90 start=0 end=0.6 mode=box
-Zest wheel /tmp/wheel.png --kind image --style fan --mode tools   # render the wheel
+Zest wheel /tmp/wheel.png --kind image       # render the wheel (any style/kind)
 ```
 
 ## Privacy
