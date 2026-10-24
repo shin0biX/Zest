@@ -108,15 +108,18 @@ the glass cues stay at 6–24 % opacity so the wheel keeps its matte character. 
 icons are 20 pt (22 selected), stacked above labels in screen space; hub content is
 sized for the 68 pt hub (26 pt icon, 14 pt semibold filename, 10 pt metadata). Labels
 are sentence case, semibold, measured against `petal.labelWidth`. The hub shows the real
-icon, filename, and `FORMAT · size` metadata. Fan mode paints **no backdrop plate**;
-shadows stay local to petals and the hub.
+icon, filename, and `FORMAT · size` metadata. **Neither wheel mode paints a backdrop
+plate** (the ring layout's plate was removed at the operator's request — rings float
+over the desktop like the fan); shadows stay local to petals and hub.
 
 **Explicitly prohibited in the fan** (all were rejected by the operator):
 
 - No blue, violet, lavender, pink, cyan, or teal accents.
 - No neon lighting, luminous rims, bright white outlines, or glowing halos.
 - No excessive bloom, radial hotspots, chrome, or inflated plastic surfaces.
-- No square or rounded-square backdrop, card, or plate behind the wheel.
+- No square or rounded-square backdrop, card, or plate behind **either wheel mode**
+  (the rings layout included one until 2026-10-24, when the operator asked for just
+  the rings).
 
 **Where the colors live:** `drawFanPetalBody`, `drawFanPetalShadow`, `drawFanHub`, and
 `drawFanContent` in `Overlay.swift` — edit those four places only.

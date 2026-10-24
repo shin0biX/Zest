@@ -428,7 +428,6 @@ private final class WelcomeWheelPreview: NSView {
         wheel.fileFormat = sample.pathExtension.uppercased()
         wheel.totalBytes = sample.fileSize
         wheel.preview = true
-        wheel.showBackdrop = false
         addSubview(wheel)
         NSLayoutConstraint.activate([
             wheel.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 8),

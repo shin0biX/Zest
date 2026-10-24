@@ -328,7 +328,6 @@ final class WheelView: NSView {
     var fileFormat: String?
     var demo = false
     var preview = false
-    var showBackdrop = true
 
     /// Fan petals, rebuilt whenever the surface, scale or centre changes.
     /// Drawing and hit-testing both read this array.
@@ -748,7 +747,6 @@ final class WheelView: NSView {
         ctx.setAllowsAntialiasing(true)
         ctx.setShouldAntialias(true)
 
-        if showBackdrop && style == .rings { drawBackdrop(ctx) }
         guard !rings.isEmpty else { return }
         if style == .fan {
             drawFan()
@@ -756,29 +754,6 @@ final class WheelView: NSView {
             drawRings()
             drawHub()
         }
-    }
-
-    private func drawBackdrop(_ ctx: CGContext) {
-        // The ring layout keeps its plate so three labelled surfaces stay
-        // legible. The fan deliberately paints no plate: its petals are the
-        // silhouette and the desktop shows through around them.
-        let radius = discRadius + 34
-        let rect = NSRect(x: center.x - radius, y: center.y - radius,
-                          width: radius * 2, height: radius * 2)
-        let path = NSBezierPath(roundedRect: rect, xRadius: 34, yRadius: 34)
-        let shadow = NSShadow()
-        shadow.shadowColor = NSColor(calibratedWhite: 0, alpha: 0.35)
-        shadow.shadowBlurRadius = 26
-        shadow.shadowOffset = NSSize(width: 0, height: -6)
-        NSGraphicsContext.saveGraphicsState()
-        shadow.set()
-        NSColor(calibratedWhite: 0.105, alpha: 0.96).setFill()
-        path.fill()
-        NSGraphicsContext.restoreGraphicsState()
-        NSColor(calibratedWhite: 1, alpha: 0.06).setStroke()
-        path.lineWidth = 1
-        path.stroke()
-        _ = ctx
     }
 
     private func drawRings() {
@@ -790,7 +765,7 @@ final class WheelView: NSView {
                 let path = wedgePath(ring: ring, index: index)
                 let fill = hover
                     ? accent.withAlphaComponent(0.96)
-                    : NSColor(calibratedWhite: emphasized ? 0.13 : 0.08, alpha: 0.92)
+                    : NSColor(calibratedWhite: emphasized ? 0.13 : 0.08, alpha: 0.97)
                 fill.setFill()
                 path.fill()
                 let stroke = hover
@@ -1180,7 +1155,7 @@ final class WheelView: NSView {
                              width: innerRadius * 2,
                              height: innerRadius * 2)
         let circle = NSBezierPath(ovalIn: hubRect)
-        NSColor(calibratedWhite: 0.06, alpha: 0.96).setFill()
+        NSColor(calibratedWhite: 0.06, alpha: 0.98).setFill()
         circle.fill()
         let activeMode = hoveredMode ?? emphasis
         (hovered == nil

@@ -162,7 +162,6 @@ enum CLI {
             ? kind.title.uppercased()
             : snapshotURL.pathExtension.uppercased()
         view.totalBytes = snapshotURL.fileSize
-        view.showBackdrop = true
         if let hover, hover >= 0 {
             var remaining = hover
             for (ringIndex, ring) in view.rings.enumerated() {
