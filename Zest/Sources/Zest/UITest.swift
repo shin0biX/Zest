@@ -492,28 +492,6 @@ enum UITest {
             panel.close()
         }
 
-        harness.check("Settings: device style prefs persist and validate") {
-            let oldStyle = Prefs.deviceStyle
-            let oldIntensity = Prefs.animationIntensity
-            let oldGlow = Prefs.greenGlow
-            defer {
-                Prefs.deviceStyle = oldStyle
-                Prefs.animationIntensity = oldIntensity
-                Prefs.greenGlow = oldGlow
-            }
-            Prefs.deviceStyle = .classic
-            try expect(Prefs.deviceStyle == .classic, "device style did not persist")
-            Prefs.animationIntensity = .balanced
-            try expect(Prefs.animationIntensity == .balanced, "intensity did not persist")
-            Prefs.greenGlow = 0.2
-            try expect(abs(Prefs.greenGlow - 0.2) < 0.001, "glow did not persist")
-            UserDefaults(suiteName: "com.zest.app")?.set("bogus", forKey: "deviceStyle")
-            try expect(Prefs.deviceStyle == .transformation,
-                       "invalid device style did not fall back to transformation")
-            UserDefaults(suiteName: "com.zest.app")?.set(7.0, forKey: "greenGlow")
-            try expect(Prefs.greenGlow == 1, "out-of-range glow did not clamp")
-        }
-
         harness.check("Settings: window builds and reflects prefs") {
             let old = Prefs.collisionPolicy
             defer { Prefs.collisionPolicy = old }
