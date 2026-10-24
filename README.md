@@ -19,6 +19,10 @@ No windows, no uploads, no accounts. Everything runs on your Mac.
 The central hub shows the file you're holding — icon, filename, format, and size. Drop
 in a gap or the hub to cancel. Results are saved beside the originals, always.
 
+Two wheel styles ship: the compact **petal fan** (shown above) and classic **concentric
+rings**. Both float over the desktop with no panel behind them — switch in
+Settings → General.
+
 ![Tools wheel](assets/tools.png)
 
 ## Formats
@@ -52,8 +56,9 @@ move · copy path · open in Terminal · reveal in Finder.
 
 Five compact tabs live behind the status item:
 
-- **General** — modifiers, wheel style (petal fan or concentric rings), feedback,
-  collision policy (keep both / replace), Float behaviour, Terminal app.
+- **General** — modifiers, wheel style (petal fan or concentric rings, both
+  panel-free), feedback, collision policy (keep both / replace), Float behaviour,
+  Terminal app.
 - **Formats** — per-format defaults: image quality and size, audio bitrate and depth,
   video quality and max height, GIF frame rate and width, PDF and EPUB layout.
 - **Compatibility** — a live input → output matrix generated from what your machine

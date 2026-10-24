@@ -876,3 +876,8 @@ Swift 5 language mode, AppKit programmatic UI, no storyboards, no third-party pa
 Keep shipped paths complete: unsupported operations must fail with a clear message and be
 hidden from the wheel when the engine is absent. Update this file in the same session as
 any architecture change.
+
+**Push to GitHub after every successfully implemented and verified feature** (operator
+standing instruction, 2026-10-24): once the suites pass on a change, commit it with a
+message recording the verification and push `main` — do not accumulate uncommitted
+work across features.
