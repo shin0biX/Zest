@@ -493,6 +493,22 @@ enum UITest {
             panel.close()
         }
 
+        harness.check("Settings: Quick Convert favorites persist and resolve") {
+            let previous = Prefs.favoriteOutput(for: .image)
+            defer { Prefs.setFavoriteOutput(previous, for: .image) }
+            Prefs.setFavoriteOutput("jpg", for: .image)
+            try expect(Prefs.favoriteOutput(for: .image) == "jpg",
+                       "favorite did not persist")
+            Prefs.setFavoriteOutput(nil, for: .image)
+            try expect(Prefs.favoriteOutput(for: .image) == nil,
+                       "clearing the favorite did not persist")
+            // The Quick Convert path resolves the same choice id the wheel uses.
+            Prefs.setFavoriteOutput("jpg", for: .image)
+            let resolved = Catalog.choices(for: [png], mode: .convert)
+                .first { $0.id == "fmt-jpg" }
+            try expect(resolved != nil, "favorite choice did not resolve from the catalog")
+        }
+
         harness.check("Planner: conversions are recorded for Run again") {
             let entries = RecentStore.load()
             try expect(!entries.isEmpty, "no recent entries after planner runs")

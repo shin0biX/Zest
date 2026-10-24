@@ -111,6 +111,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         open.target = self
         menu.addItem(open)
 
+        let quick = NSMenuItem(title: "Quick Convert to Favorites", action: #selector(quickConvert),
+                               keyEquivalent: "k")
+        quick.target = self
+        menu.addItem(quick)
+
         let recents = RecentStore.load()
         if !recents.isEmpty {
             menu.addItem(.separator())
@@ -189,6 +194,43 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             .filter { FileManager.default.fileExists(atPath: $0.path) }
         guard !outputs.isEmpty else { return }
         NSWorkspace.shared.activateFileViewerSelecting(outputs)
+    }
+
+    /// Convert picked files straight to their kind's favorite output,
+    /// no wheel. Kinds without a favorite are collected into one notice.
+    @objc private func quickConvert() {
+        let panel = NSOpenPanel()
+        panel.allowsMultipleSelection = true
+        panel.canChooseFiles = true
+        panel.canChooseDirectories = false
+        panel.prompt = "Convert"
+        panel.message = "Pick files to convert to their favorite formats"
+        NSApp.activate(ignoringOtherApps: true)
+        guard panel.runModal() == .OK, !panel.urls.isEmpty else { return }
+
+        var skipped: [String] = []
+        var jobs: [(URL, Fmt, WheelChoice)] = []
+        for url in panel.urls {
+            let kind = KindDetector.kind(of: url)
+            guard let ext = Prefs.favoriteOutput(for: kind),
+                  let fmt = Catalog.formats(for: kind).first(where: { $0.ext == ext }),
+                  let choice = Catalog.choices(for: [url], mode: .convert)
+                      .first(where: { $0.id == "fmt-\(ext)" }) else {
+                skipped.append(kind.title)
+                continue
+            }
+            jobs.append((url, fmt, choice))
+        }
+        for (url, _, choice) in jobs {
+            Planner.submit(context: DragContext(urls: [url], anchor: NSEvent.mouseLocation,
+                                                 kind: KindDetector.commonKind([url])),
+                           choice: choice, mode: .convert)
+        }
+        if !skipped.isEmpty {
+            Alert.show("Some files were skipped",
+                       detail: "No favorite output set for: \(Set(skipped).sorted().joined(separator: ", ")). "
+                           + "Set them in Settings → General.")
+        }
     }
 
     @objc private func openFiles() {

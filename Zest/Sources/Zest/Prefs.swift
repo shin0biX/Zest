@@ -293,6 +293,17 @@ enum Prefs {
         set { defaults.set(newValue, forKey: "welcomeSeen") }
     }
 
+    /// Per-kind favorite output extension, used by Quick Convert. Nil means
+    /// "no favorite yet" — Quick Convert skips that kind.
+    static func favoriteOutput(for kind: Kind) -> String? {
+        let raw = defaults.string(forKey: "favorite.\(kind.rawValue)")
+        return raw?.isEmpty == false ? raw : nil
+    }
+
+    static func setFavoriteOutput(_ ext: String?, for kind: Kind) {
+        defaults.set(ext ?? "", forKey: "favorite.\(kind.rawValue)")
+    }
+
     /// Drag-trace logging for development and the external harness. Release
     /// builds stay quiet unless this is set (the harness sets it for its
     /// run). Errors always log.

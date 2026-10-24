@@ -782,6 +782,23 @@ final class SettingsWindow: NSWindowController, NSSearchFieldDelegate {
         }, to: list)
 
         append(divider(), to: list)
+        append(subsectionHeader("Quick Convert Favorites"), to: list)
+        for kind in [Kind.image, .video, .audio, .document] {
+            let formats = Catalog.formats(for: kind)
+            let items = ["None"] + formats.map(\.title)
+            let current = Prefs.favoriteOutput(for: kind)
+            let selected = current.flatMap { ext in
+                formats.firstIndex { $0.ext == ext }.map { $0 + 1 }
+            } ?? 0
+            append(row("Favorite \(kind.title.lowercased()) output", control: popup(
+                items, selected: selected, width: 170) { index in
+                let ext = index == 0 ? nil : formats[index - 1].ext
+                Prefs.setFavoriteOutput(ext, for: kind)
+            }), to: list)
+        }
+        append(noteRow("Quick Convert (menu, ⌘K) converts picked files to these formats instantly."), to: list)
+
+        append(divider(), to: list)
         append(subsectionHeader("Drag Modifiers"), to: list)
         append(modifierRow("Conversion wheel", current: Prefs.convertKey,
                            surface: .convert), to: list)
