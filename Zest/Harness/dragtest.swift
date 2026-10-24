@@ -473,7 +473,13 @@ final class Harness {
 
     init(runRoot: URL, appURL: URL, relaunch: Bool) throws {
         guard AXIsProcessTrusted() else {
-            throw HarnessFailure("Accessibility is not granted to this host")
+            throw HarnessFailure("""
+                Accessibility is not granted to this host. macOS checks the app that \
+                launched this harness (Terminal, iTerm2, …), not dragtest itself — \
+                a grant on dragtest would not survive a rebuild anyway (ad-hoc \
+                signature). System Settings → Privacy & Security → Accessibility → \
+                enable the terminal you run Harness/run.sh from, relaunch it, rerun.
+                """)
         }
         guard let finder = NSRunningApplication
             .runningApplications(withBundleIdentifier: "com.apple.finder").first else {

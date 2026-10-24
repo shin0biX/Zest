@@ -116,6 +116,73 @@ enum UITest {
             try expect(wheel.rings.count == 3, "switching back to rings kept \(wheel.rings.count) rings")
         }
 
+        harness.check("Wheel: fan petals keep a gap at every seam") {
+            let wheel = makeWheel(png, mode: .tools)
+            wheel.style = .fan
+            guard let ring = wheel.rings.first else { throw ZestError("fan ring missing") }
+            guard ring.choices.count == wheel.fanPetals.count, !wheel.fanPetals.isEmpty else {
+                throw ZestError("fan petals did not build")
+            }
+            let petals = wheel.fanPetals
+            // Walk every adjacent pair, including the wrap boundary, and
+            // sample the shared seam through the whole body. The seam point
+            // must sit in neither petal, and the model width profile — the
+            // same cubic the path is built from — must leave a visible gap.
+            for index in petals.indices {
+                let neighbour = (index + 1) % petals.count
+                let seam = ring.startAngle - (CGFloat(index) + 1) * ring.step
+                let petal = petals[index]
+                for fraction in stride(from: 0.0, through: 1.0, by: 0.05) {
+                    let radius = petal.sideInner + petal.length * fraction
+                    let point = NSPoint(x: wheel.center.x + cos(seam) * radius,
+                                        y: wheel.center.y + sin(seam) * radius)
+                    try expect(!petal.path.contains(point)
+                                   && !petals[neighbour].path.contains(point),
+                               "petals \(index)/\(neighbour) cover the seam "
+                               + "at \(Int(radius))pt")
+                    let pitchHalf = radius * sin(ring.step / 2)
+                    let half = FanPetalGeometry.halfWidth(
+                        at: fraction, inner: petal.innerHalf, outer: petal.outerHalf)
+                    let gap = 2 * (pitchHalf - half)
+                    try expect(gap >= 4.5,
+                               "gap between petals \(index)/\(neighbour) pinches to "
+                               + "\(String(format: "%.1f", gap))pt at \(Int(radius))pt")
+                }
+            }
+        }
+
+        harness.check("Wheel: every fan label fits its petal") {
+            for kind in sampleKinds {
+                let url = try sampleURL(kind, root: root)
+                let wheel = makeWheel(url, mode: .convert)
+                wheel.style = .fan
+                guard let ring = wheel.rings.first else { throw ZestError("fan ring missing") }
+                guard ring.choices.count == wheel.fanPetals.count, !wheel.fanPetals.isEmpty else {
+                    throw ZestError("fan petals missing for \(kind.rawValue)")
+                }
+                let isFormat = ring.choices.contains { choice in
+                    if case .format = choice.payload { return true } else { return false }
+                }
+                let scale = max(0.70, wheel.fanScale)
+                let font = isFormat
+                    ? WheelView.fanFormatFont(for: ring.choices,
+                                              available: wheel.fanPetals[0].labelWidth,
+                                              scale: scale)
+                    : WheelView.fanLabelFont(for: ring.choices,
+                                             available: wheel.fanPetals[0].labelWidth,
+                                             scale: scale)
+                for (index, petal) in wheel.fanPetals.enumerated() {
+                    let choice = ring.choices[index]
+                    let width = (choice.title as NSString)
+                        .size(withAttributes: [.font: font]).width
+                    try expect(width <= petal.labelWidth + 0.5,
+                               "\(kind.rawValue)/\(ring.mode.rawValue): \(choice.title) "
+                               + "needs \(Int(width))pt, petal gives "
+                               + "\(Int(petal.labelWidth))pt")
+                }
+            }
+        }
+
         harness.check("Wheel: hub and outside cancel") {
             let wheel = makeWheel(png, mode: .convert)
             try expect(wheel.choice(at: wheel.center) == nil, "hub returned a choice")

@@ -424,6 +424,8 @@ private final class WelcomeWheelPreview: NSView {
         wheel.emphasize(mode)
         wheel.count = 1
         wheel.kind = .image
+        wheel.fileName = sample.lastPathComponent
+        wheel.fileFormat = sample.pathExtension.uppercased()
         wheel.totalBytes = sample.fileSize
         wheel.preview = true
         wheel.showBackdrop = false

@@ -110,6 +110,12 @@ final class OverlayController {
         wheel.emphasize(mode)
         wheel.count = context.urls.count
         wheel.kind = context.kind
+        wheel.fileName = context.urls.count == 1
+            ? context.urls[0].lastPathComponent
+            : "\(context.urls.count) files"
+        wheel.fileFormat = context.urls.count == 1
+            ? context.urls[0].pathExtension.uppercased()
+            : (context.kind?.title.uppercased() ?? "")
         wheel.totalBytes = context.urls.reduce(0) { sum, url in
             sum + (url.isDirectory ? 0 : url.fileSize)
         }
@@ -243,6 +249,56 @@ struct WheelRing {
     }
 }
 
+/// One petal of the fan wheel. The path, the label anchors, the measured label
+/// width and the hit-test all come from this value; nothing else invents a
+/// second set of angles. Local coordinates are petal-relative before rotation:
+/// +y points outward from the hub, +x is tangential.
+struct FanPetalGeometry {
+    /// The two shoulder control points as fractions of the inner-to-outer
+    /// width change. They are shared by the path builder, the width function
+    /// used for label fitting, and therefore the hit-test path. `0.46 / 0.58`
+    /// keeps the sides nearly parallel with a slight outward bow, so the
+    /// inter-petal channel stays thin and even end to end. Steeper pairs (the
+    /// earlier `0.85 / 1.0`) saturate by mid-length and pinch neighbours
+    /// together.
+    static let shoulderInnerControl: CGFloat = 0.46
+    static let shoulderOuterControl: CGFloat = 0.58
+
+    let index: Int
+    let angle: CGFloat
+    let path: NSBezierPath
+    /// Just the outer cap's two curves, open at the shoulders. The rim
+    /// specular is stroked along it so the broad end catches the light.
+    let capPath: NSBezierPath
+    let scale: CGFloat
+    let sideInner: CGFloat
+    let sideOuter: CGFloat
+    let tip: CGFloat
+    let innerHalf: CGFloat
+    let outerHalf: CGFloat
+    let labelRadius: CGFloat
+    let labelWidth: CGFloat
+
+    var length: CGFloat { max(1, sideOuter - sideInner) }
+
+    /// Exact half-width of the shoulder cubic at a radial parameter. The
+    /// shoulder is a cubic Bezier with x control fractions a and b, so the
+    /// width is `inner + (outer - inner) · (3u²t·a + 3ut²·b + t³)`.
+    static func halfWidth(at t: CGFloat, inner: CGFloat, outer: CGFloat) -> CGFloat {
+        let c = min(max(t, 0), 1)
+        let u = 1 - c
+        let profile = 3 * u * u * c * shoulderInnerControl
+            + 3 * u * c * c * shoulderOuterControl
+            + c * c * c
+        return inner + (outer - inner) * profile
+    }
+
+    func width(at radius: CGFloat) -> CGFloat {
+        let t = min(max((radius - sideInner) / length, 0), 1)
+        return 2 * Self.halfWidth(at: t, inner: innerHalf, outer: outerHalf)
+    }
+}
+
 final class WheelView: NSView {
     /// Radii in points. The fan is the default surface: 496 pt across at
     /// native scale, which leaves the desktop visible around it. Rings are
@@ -266,9 +322,17 @@ final class WheelView: NSView {
     var count: Int = 1
     var kind: Kind?
     var totalBytes: Int64 = 0
+    /// Dynamic hub copy. The controller passes the real file name and
+    /// extension; the CLI and the welcome preview pass their sample.
+    var fileName: String?
+    var fileFormat: String?
     var demo = false
     var preview = false
     var showBackdrop = true
+
+    /// Fan petals, rebuilt whenever the surface, scale or centre changes.
+    /// Drawing and hit-testing both read this array.
+    private(set) var fanPetals: [FanPetalGeometry] = []
 
     /// Fan geometry scale. The overlay uses 1; the welcome preview shrinks the
     /// same drawing to fit a 370-point card without a second renderer.
@@ -280,8 +344,6 @@ final class WheelView: NSView {
     }
     private var fanOuter: CGFloat { Self.fanOuterRadius * fanScale }
     private var fanInner: CGFloat { Self.fanInnerRadius * fanScale }
-    private var fanAccent: NSColor { .systemOrange }
-
     /// Rings keeps all three surfaces visible. Fan is the single-surface
     /// layout; emphasis picks which surface the fan shows.
     var style: WheelStyle = .rings {
@@ -295,7 +357,10 @@ final class WheelView: NSView {
         didSet { if oldValue != hovered { needsDisplay = true } }
     }
     var center: NSPoint = .zero {
-        didSet { needsDisplay = true }
+        didSet {
+            if style == .fan { rebuildFanPetals() }
+            needsDisplay = true
+        }
     }
 
     /// Called with the picked choice and the ring it came from. `nil` cancels.
@@ -348,6 +413,7 @@ final class WheelView: NSView {
             emphasis = surface.mode
             rings = [WheelRing(mode: surface.mode, choices: surface.choices,
                                inner: fanInner, outer: fanOuter)]
+            rebuildFanPetals()
             hovered = nil
             needsDisplay = true
             return
@@ -366,8 +432,9 @@ final class WheelView: NSView {
         needsDisplay = true
     }
 
-    static let fanInnerRadius: CGFloat = 112
-    static let fanOuterRadius: CGFloat = 248
+    /// Medium wheel: 480 pt across at native scale.
+    static let fanInnerRadius: CGFloat = 84
+    static let fanOuterRadius: CGFloat = 240
 
     /// Ring labels share one font size per ring. Pick the largest size whose
     /// longest title still fits the wedge chord, so shrinking the wheel never
@@ -383,6 +450,35 @@ final class WheelView: NSView {
             if widest <= available { return font }
         }
         return .systemFont(ofSize: 8.5, weight: .semibold)
+    }
+
+    /// Fan labels use sentence case and one measured size for the whole
+    /// surface. The available width comes from the petal itself, not from an
+    /// angular chord guess, so the label fit test and the rendered text share
+    /// the same contract.
+    static func fanLabelFont(for choices: [WheelChoice], available: CGFloat,
+                             scale: CGFloat) -> NSFont {
+        fanFont(for: choices, available: available, scale: scale,
+                sizes: [12.5, 12, 11.5, 11, 10.5, 10, 9.5, 9])
+    }
+
+    static func fanFormatFont(for choices: [WheelChoice], available: CGFloat,
+                              scale: CGFloat) -> NSFont {
+        fanFont(for: choices, available: available, scale: scale,
+                sizes: [14.5, 14, 13.5, 13, 12.5, 12, 11.5, 11])
+    }
+
+    private static func fanFont(for choices: [WheelChoice], available: CGFloat,
+                                scale: CGFloat, sizes: [CGFloat]) -> NSFont {
+        for size in sizes {
+            let font = NSFont.systemFont(ofSize: max(7, size * scale), weight: .semibold)
+            let widest = choices.map {
+                ($0.title as NSString).size(withAttributes: [.font: font]).width
+            }.max() ?? 0
+            if widest <= available { return font }
+        }
+        let fallback = sizes.last ?? 9.5
+        return .systemFont(ofSize: max(7, fallback * scale), weight: .semibold)
     }
 
     override var isFlipped: Bool { false }
@@ -462,63 +558,148 @@ final class WheelView: NSView {
         return path
     }
 
-    /// Rounded petal used by the fan layout. The four corners are quadratic
-    /// joins so the outer and inner edges read as petals rather than pie cuts.
-    private func fanPetalPath(ring: WheelRing, index: Int, gap: CGFloat,
-                              corner: CGFloat) -> NSBezierPath {
-        let a0 = ring.startAngle - CGFloat(index + 1) * ring.step + gap / 2
-        let a1 = ring.startAngle - CGFloat(index) * ring.step - gap / 2
-        let rOut = ring.outer - 2
-        let rIn = ring.inner + 2
-        guard a1 > a0, rOut > rIn else {
-            return wedgePath(ring: ring, index: index, gapOverride: gap)
+    /// Rebuilds the single source of truth for the fan: the petal paths and
+    /// their label metrics. Every fan draw and hit-test reads this array.
+    private func rebuildFanPetals() {
+        guard style == .fan, let ring = rings.first, !ring.choices.isEmpty else {
+            fanPetals = []
+            return
+        }
+        let scale = max(0.5, fanScale)
+        fanPetals = (0..<ring.choices.count).map {
+            makeFanPetal(ring: ring, index: $0, scale: scale)
+        }
+    }
+
+    private func makeFanPetal(ring: WheelRing, index: Int,
+                              scale: CGFloat) -> FanPetalGeometry {
+        let angle = ring.midAngle(index)
+        let halfSlot = sin(ring.step / 2)
+        let tip = ring.outer - 2 * scale
+
+        // Petals fill 85% of the chord at every count, so low-count fans grow
+        // wide paddles that fill the circle instead of floating slim petals
+        // over empty space. The cap is a shape guard for very sparse surfaces
+        // (three-petal folders) only; it never binds at eight or more. The
+        // teardrop silhouette — narrow neck, domed cap — is what keeps wide
+        // petals reading as petals. The reference's own bottom pair touches;
+        // this geometry never lets a gap close — the uitest seam check holds
+        // every pair to a real channel.
+        let innerTip = ring.inner - 4 * scale
+        let widthCap = 0.62 * (tip - innerTip)
+        let capGuess = min(tip * halfSlot * 0.85, widthCap) * 0.58
+        let sideGuess = tip - capGuess
+        let outerHalf = max(10 * scale, min(sideGuess * halfSlot * 0.85, widthCap))
+        let capBulge = outerHalf * 0.58
+        let sideOuter = tip - capBulge
+        let innerHalf = max(6 * scale, outerHalf * 0.40)
+
+        // The neck starts just under the hub rim so the petals emerge from
+        // behind the hub and the flower reads as one piece. The hub is drawn
+        // over this part and fan hit-testing treats the hub as a cancel.
+        let innerBulge = innerHalf * 0.62
+        let sideInner = innerTip + innerBulge
+        let length = max(1, sideOuter - sideInner)
+
+        let labelRadius = sideInner + length * 0.66
+        let t = min(max((labelRadius - sideInner) / length, 0), 1)
+        let half = FanPetalGeometry.halfWidth(at: t, inner: innerHalf,
+                                              outer: outerHalf)
+        let labelWidth = max(30 * scale, 2 * half - 10 * scale)
+
+        let paths = fanPetalPath(angle: angle, sideInner: sideInner,
+                                 sideOuter: sideOuter, tip: tip,
+                                 innerTip: innerTip, innerHalf: innerHalf,
+                                 outerHalf: outerHalf, innerBulge: innerBulge,
+                                 capBulge: capBulge)
+        return FanPetalGeometry(index: index, angle: angle,
+                                path: paths.body, capPath: paths.cap,
+                                scale: scale, sideInner: sideInner,
+                                sideOuter: sideOuter, tip: tip,
+                                innerHalf: innerHalf, outerHalf: outerHalf,
+                                labelRadius: labelRadius,
+                                labelWidth: labelWidth)
+    }
+
+    /// One elongated glass petal in two shoulder curves and two cap halves.
+    /// The shoulder is a cubic whose width profile is shared with the label
+    /// fit; the caps are elliptical quarter arcs. Adjacent petals therefore
+    /// never share a point, and the wrap boundary uses exactly the same
+    /// construction. Also returns the open outer-cap sub-path for the rim
+    /// specular, built from the same points.
+    private func fanPetalPath(angle: CGFloat, sideInner: CGFloat,
+                              sideOuter: CGFloat, tip: CGFloat,
+                              innerTip: CGFloat, innerHalf: CGFloat,
+                              outerHalf: CGFloat, innerBulge: CGFloat,
+                              capBulge: CGFloat)
+        -> (body: NSBezierPath, cap: NSBezierPath) {
+        let ux = cos(angle)
+        let uy = sin(angle)
+        let tx = -uy
+        let ty = ux
+        func p(_ x: CGFloat, _ y: CGFloat) -> NSPoint {
+            NSPoint(x: center.x + ux * y + tx * x,
+                    y: center.y + uy * y + ty * x)
         }
 
-        let maxCorner = min((rOut - rIn) / 3, rOut * (a1 - a0) / 3)
-        let radius = max(1, min(corner, maxCorner))
-        let dOut = min((a1 - a0) / 4, radius / rOut)
-        let dIn = min((a1 - a0) / 4, radius / rIn)
-        func point(_ r: CGFloat, _ a: CGFloat) -> CGPoint {
-            CGPoint(x: center.x + cos(a) * r, y: center.y + sin(a) * r)
-        }
-
+        let k: CGFloat = 0.5522847498 // quarter-circle Bezier constant
+        let length = max(1, sideOuter - sideInner)
+        let delta = outerHalf - innerHalf
+        let innerControl = innerHalf + FanPetalGeometry.shoulderInnerControl * delta
+        let outerControl = innerHalf + FanPetalGeometry.shoulderOuterControl * delta
         let path = NSBezierPath()
-        func addQuad(to end: NSPoint, control: NSPoint) {
-            let start = path.currentPoint
-            let c1 = NSPoint(x: start.x + (control.x - start.x) * 2 / 3,
-                             y: start.y + (control.y - start.y) * 2 / 3)
-            let c2 = NSPoint(x: end.x + (control.x - end.x) * 2 / 3,
-                             y: end.y + (control.y - end.y) * 2 / 3)
-            path.curve(to: end, controlPoint1: c1, controlPoint2: c2)
-        }
+        path.move(to: p(0, innerTip))
 
-        path.move(to: point(rOut, a0 + dOut))
-        path.appendArc(withCenter: center, radius: rOut,
-                       startAngle: (a0 + dOut) * 180 / .pi,
-                       endAngle: (a1 - dOut) * 180 / .pi,
-                       clockwise: false)
-        addQuad(to: point(rOut - radius, a1), control: point(rOut, a1))
-        path.line(to: point(rIn + radius, a1))
-        addQuad(to: point(rIn, a1 - dIn), control: point(rIn, a1))
-        path.appendArc(withCenter: center, radius: rIn,
-                       startAngle: (a1 - dIn) * 180 / .pi,
-                       endAngle: (a0 + dIn) * 180 / .pi,
-                       clockwise: true)
-        addQuad(to: point(rIn + radius, a0), control: point(rIn, a0))
-        path.line(to: point(rOut - radius, a0))
-        addQuad(to: point(rOut, a0 + dOut), control: point(rOut, a0))
+        // Left inner cap, left shoulder, outer cap and back down the right.
+        path.curve(to: p(-innerHalf, sideInner),
+                   controlPoint1: p(-k * innerHalf, innerTip),
+                   controlPoint2: p(-innerHalf, sideInner - k * innerBulge))
+        path.curve(to: p(-outerHalf, sideOuter),
+                   controlPoint1: p(-innerControl, sideInner + length / 3),
+                   controlPoint2: p(-outerControl, sideInner + length * 2 / 3))
+        path.curve(to: p(0, tip),
+                   controlPoint1: p(-outerHalf, sideOuter + k * capBulge),
+                   controlPoint2: p(-k * outerHalf, tip))
+        path.curve(to: p(outerHalf, sideOuter),
+                   controlPoint1: p(k * outerHalf, tip),
+                   controlPoint2: p(outerHalf, sideOuter + k * capBulge))
+        path.curve(to: p(innerHalf, sideInner),
+                   controlPoint1: p(outerControl, sideInner + length * 2 / 3),
+                   controlPoint2: p(innerControl, sideInner + length / 3))
+        path.curve(to: p(0, innerTip),
+                   controlPoint1: p(innerHalf, sideInner - k * innerBulge),
+                   controlPoint2: p(k * innerHalf, innerTip))
         path.close()
-        return path
+
+        let cap = NSBezierPath()
+        cap.move(to: p(-outerHalf, sideOuter))
+        cap.curve(to: p(0, tip),
+                  controlPoint1: p(-outerHalf, sideOuter + k * capBulge),
+                  controlPoint2: p(-k * outerHalf, tip))
+        cap.curve(to: p(outerHalf, sideOuter),
+                  controlPoint1: p(k * outerHalf, tip),
+                  controlPoint2: p(outerHalf, sideOuter + k * capBulge))
+        return (path, cap)
     }
 
     func hit(at point: NSPoint) -> WheelHit? {
         guard !rings.isEmpty else { return nil }
+        if style == .fan {
+            // The hub is a cancel zone even though the petal necks tuck just
+            // under its rim, and the gap between two petals cancels too: hit
+            // the drawn silhouette so nothing silently selects a neighbour.
+            let dx = point.x - center.x
+            let dy = point.y - center.y
+            guard hypot(dx, dy) >= fanInner else { return nil }
+            for (index, petal) in fanPetals.enumerated() where petal.path.contains(point) {
+                return WheelHit(ring: 0, index: index)
+            }
+            return nil
+        }
         let dx = point.x - center.x
         let dy = point.y - center.y
         let r = hypot(dx, dy)
-        let minRadius = style == .fan ? fanInner : Self.hubRadius
-        let maxRadius = style == .fan ? fanOuter : Self.outerRadius
-        guard r >= minRadius, r <= maxRadius,
+        guard r >= Self.hubRadius, r <= Self.outerRadius,
               let ringIndex = rings.firstIndex(where: { r >= $0.inner - 0.5 && r <= $0.outer + 0.5 })
         else { return nil }
         let ring = rings[ringIndex]
@@ -566,7 +747,7 @@ final class WheelView: NSView {
         ctx.setAllowsAntialiasing(true)
         ctx.setShouldAntialias(true)
 
-        if showBackdrop { drawBackdrop(ctx) }
+        if showBackdrop && style == .rings { drawBackdrop(ctx) }
         guard !rings.isEmpty else { return }
         if style == .fan {
             drawFan()
@@ -577,9 +758,9 @@ final class WheelView: NSView {
     }
 
     private func drawBackdrop(_ ctx: CGContext) {
-        // Opaque plate: a single dark rounded square behind the wheel
-        // instead of a translucent glow. It keeps every label legible on
-        // bright wallpapers and reads as one deliberate surface.
+        // The ring layout keeps its plate so three labelled surfaces stay
+        // legible. The fan deliberately paints no plate: its petals are the
+        // silhouette and the desktop shows through around them.
         let radius = discRadius + 34
         let rect = NSRect(x: center.x - radius, y: center.y - radius,
                           width: radius * 2, height: radius * 2)
@@ -641,78 +822,126 @@ final class WheelView: NSView {
 
     // MARK: Fan wheel
 
-    /// Fan layout: one surface, eight-ish rounded petals, the file size in
-    /// the hub. The three-ring layout stays available in Settings and is
-    /// still the default for `WheelView` so the headless geometry tests can
-    /// exercise every ring without touching preferences.
+    /// Fan layout: one surface of matte graphite petals around the file hub.
+    /// The three-ring layout stays available in Settings and is still the
+    /// default for `WheelView` so the headless geometry tests can exercise
+    /// every ring without touching preferences.
     private func drawFan() {
         guard let ring = rings.first else { return }
-        let accent = fanAccent
-        let corner = 16 * max(0.70, fanScale)
+        if fanPetals.count != ring.choices.count { rebuildFanPetals() }
+        guard fanPetals.count == ring.choices.count, !fanPetals.isEmpty else { return }
 
-        for (index, choice) in ring.choices.enumerated() {
+        // Neutral shadows separate neighbouring petals; the selected petal's
+        // shadow is faintly warm. There is no glow pass — the graphite design
+        // keeps every petal matte and lets silhouette and channels carry it.
+        for (index, petal) in fanPetals.enumerated() {
             let hover = hovered == WheelHit(ring: 0, index: index)
-            let gap = hover
-                ? min(0.040, ring.step * 0.13)
-                : min(0.058, ring.step * 0.18)
-            let path = fanPetalPath(ring: ring, index: index, gap: gap, corner: corner)
-
-            if hover {
-                accent.withAlphaComponent(0.22).setStroke()
-                path.lineWidth = 8
-                path.stroke()
-            }
-
-            NSGraphicsContext.saveGraphicsState()
-            path.addClip()
-            let gradient: NSGradient?
-            if hover {
-                gradient = NSGradient(colors: [
-                    accent.blended(withFraction: 0.10, of: .white) ?? accent,
-                    accent.blended(withFraction: 0.22, of: .black) ?? accent
-                ])
-            } else {
-                gradient = NSGradient(colors: [
-                    NSColor(calibratedWhite: 0.245, alpha: 1),
-                    NSColor(calibratedWhite: 0.190, alpha: 1)
-                ])
-            }
-            gradient?.draw(in: path.bounds, angle: 90)
-            NSGraphicsContext.restoreGraphicsState()
-
-            (hover
-                ? NSColor(calibratedWhite: 1, alpha: 0.34)
-                : NSColor(calibratedWhite: 1, alpha: 0.055)).setStroke()
-            path.lineWidth = 1
-            path.stroke()
-
-            drawFanContent(choice, ring: ring, index: index, hover: hover)
+            drawFanPetalShadow(petal, hover: hover)
         }
 
-        drawFanHub(ring)
+        let isFormat: Bool
+        if let first = ring.choices.first, case .format = first.payload {
+            isFormat = true
+        } else {
+            isFormat = false
+        }
+        let artScale = max(0.70, fanScale)
+        let labelFont = isFormat
+            ? Self.fanFormatFont(for: ring.choices, available: fanPetals[0].labelWidth,
+                                scale: artScale)
+            : Self.fanLabelFont(for: ring.choices, available: fanPetals[0].labelWidth,
+                               scale: artScale)
+
+        for (index, choice) in ring.choices.enumerated() {
+            guard index < fanPetals.count else { continue }
+            let petal = fanPetals[index]
+            let hover = hovered == WheelHit(ring: 0, index: index)
+            drawFanPetalBody(petal, hover: hover)
+            drawFanContent(choice, petal: petal, hover: hover, font: labelFont)
+        }
+
+        drawFanHub()
     }
 
-    private func drawFanContent(_ choice: WheelChoice, ring: WheelRing,
-                                index: Int, hover: Bool) {
-        let angle = ring.midAngle(index)
+    private func fanPoint(_ angle: CGFloat, _ radius: CGFloat) -> NSPoint {
+        NSPoint(x: center.x + cos(angle) * radius,
+                y: center.y + sin(angle) * radius)
+    }
+
+    /// One neutral shadow per petal, drawn before any body so a shadow never
+    /// falls across a neighbour's face. The selected petal's shadow is faintly
+    /// warm — the only warm effect in the design, and barely that.
+    private func drawFanPetalShadow(_ petal: FanPetalGeometry, hover: Bool) {
+        let shadow = NSShadow()
+        if hover {
+            shadow.shadowColor = NSColor(srgbRed: 0.30, green: 0.17, blue: 0.05,
+                                         alpha: 0.50)
+            shadow.shadowBlurRadius = 13 * petal.scale
+        } else {
+            shadow.shadowColor = NSColor.black.withAlphaComponent(0.55)
+            shadow.shadowBlurRadius = 14 * petal.scale
+        }
+        shadow.shadowOffset = NSSize(width: 0, height: -4 * petal.scale)
+        NSGraphicsContext.saveGraphicsState()
+        shadow.set()
+        NSColor.black.withAlphaComponent(0.70).setFill()
+        petal.path.fill()
+        NSGraphicsContext.restoreGraphicsState()
+    }
+
+    /// One graphite surface per petal: a single tonal gradient from the dark
+    /// inner neck to the lighter broad end plus a fine grey border — nothing
+    /// else. Silhouette and channels carry the design. The selected petal
+    /// swaps the same structure for the muted amber pair and border colour;
+    /// no bloom, hotspot, or luminous rim.
+    private func drawFanPetalBody(_ petal: FanPetalGeometry, hover: Bool) {
+        NSGraphicsContext.saveGraphicsState()
+        petal.path.addClip()
+        if hover {
+            // Selected: dark amber-brown flowing into the highlight.
+            NSGradient(colors: [
+                NSColor(srgbRed: 0.471, green: 0.271, blue: 0.122, alpha: 1),
+                NSColor(srgbRed: 0.537, green: 0.312, blue: 0.137, alpha: 1),
+                NSColor(srgbRed: 0.604, green: 0.353, blue: 0.153, alpha: 1)
+            ])?.draw(in: petal.path.bounds, angle: petal.angle * 180 / .pi)
+        } else {
+            // Unselected: darker inner region, main fill, lighter broad end.
+            NSGradient(colors: [
+                NSColor(srgbRed: 0.114, green: 0.118, blue: 0.129, alpha: 1),
+                NSColor(srgbRed: 0.145, green: 0.149, blue: 0.161, alpha: 1),
+                NSColor(srgbRed: 0.188, green: 0.192, blue: 0.208, alpha: 1)
+            ])?.draw(in: petal.path.bounds, angle: petal.angle * 180 / .pi)
+        }
+        NSGraphicsContext.restoreGraphicsState()
+
+        let border = hover
+            ? NSColor(srgbRed: 0.788, green: 0.522, blue: 0.208, alpha: 1)
+            : NSColor(srgbRed: 0.255, green: 0.259, blue: 0.278, alpha: 1)
+        border.setStroke()
+        petal.path.lineWidth = (hover ? 1.4 : 1.0) * petal.scale
+        petal.path.stroke()
+    }
+
+    private func drawFanContent(_ choice: WheelChoice, petal: FanPetalGeometry,
+                                hover: Bool, font: NSFont) {
         let artScale = max(0.70, fanScale)
         let isFormat: Bool
         if case .format = choice.payload { isFormat = true } else { isFormat = false }
 
-        // The hub is just the file size; the petals carry the labels.
-        // Formats sit on the petal's midline. Tools and actions stack a white
-        // glyph and label vertically at that same anchor, so side petals do
-        // not push their icon outboard of the text.
-        let contentRadius = (ring.inner + ring.outer) / 2
-        let anchor = NSPoint(x: center.x + cos(angle) * contentRadius,
-                             y: center.y + sin(angle) * contentRadius)
-
+        // Stack content in screen space, not along the petal's radial axis.
+        // Every petal then reads icon-over-label like the reference, even at
+        // three o'clock and six o'clock. The shared anchor still comes from
+        // the petal geometry.
+        let anchor = fanPoint(petal.angle, petal.labelRadius)
         if !isFormat {
-            let iconPoint = NSPoint(x: anchor.x, y: anchor.y + 12 * artScale)
+            let iconPoint = NSPoint(x: anchor.x, y: anchor.y + 13 * artScale)
             let iconSize = (hover ? 23.0 : 21.0) * artScale
             if let image = symbol(choice.symbol, pointSize: iconSize,
-                                  color: hover ? .white
-                                               : NSColor(calibratedWhite: 1, alpha: 0.86)) {
+                                  color: hover
+                                      ? NSColor(srgbRed: 1.0, green: 0.702, blue: 0.302,
+                                                alpha: 1)
+                                      : NSColor(srgbRed: 0.820, green: 0.820, blue: 0.835,
+                                                alpha: 1)) {
                 let size = image.size
                 image.draw(in: NSRect(x: iconPoint.x - size.width / 2,
                                       y: iconPoint.y - size.height / 2,
@@ -720,73 +949,119 @@ final class WheelView: NSView {
             }
         }
 
-        let labelPoint = isFormat ? anchor
+        let labelPoint = isFormat
+            ? anchor
             : NSPoint(x: anchor.x, y: anchor.y - 7 * artScale)
-        let step = ring.step
-        let available = max(34, 2 * contentRadius * sin(step / 2) - 4)
-        let base: CGFloat
-        if isFormat {
-            base = ring.choices.count > 10 ? 11.5 : 13
-        } else {
-            base = ring.choices.count > 12 ? 9.5 : (ring.choices.count > 9 ? 10.5 : 11.5)
-        }
-        let fontSize = max(7, base * artScale)
         let para = NSMutableParagraphStyle()
         para.alignment = .center
-        para.lineBreakMode = .byWordWrapping
+        para.lineBreakMode = .byTruncatingTail
         let attrs: [NSAttributedString.Key: Any] = [
-            .font: NSFont.systemFont(ofSize: fontSize, weight: .bold),
-            .foregroundColor: hover ? NSColor.white : NSColor(calibratedWhite: 1, alpha: 0.95),
+            .font: font,
+            .foregroundColor: hover
+                ? NSColor.white
+                : NSColor(srgbRed: 0.945, green: 0.945, blue: 0.953, alpha: 1),
             .paragraphStyle: para,
-            .kern: 0.35
+            .kern: 0.1
         ]
-        let text = choice.title.uppercased() as NSString
-        var box = text.boundingRect(
-            with: NSSize(width: available, height: 40),
-            options: [.usesLineFragmentOrigin],
-            attributes: attrs)
-        box.origin = .zero
-        box = box.integral
-        text.draw(with: NSRect(x: labelPoint.x - available / 2,
-                              y: labelPoint.y - box.height / 2,
-                              width: available, height: max(box.height, 12)),
-                  options: [.usesLineFragmentOrigin],
-                  attributes: attrs)
+        let lineHeight = font.pointSize * 1.35
+        let rect = NSRect(x: labelPoint.x - petal.labelWidth / 2,
+                          y: labelPoint.y - lineHeight / 2,
+                          width: petal.labelWidth, height: lineHeight)
+        (choice.title as NSString).draw(in: rect, withAttributes: attrs)
     }
 
-    private func drawFanHub(_ ring: WheelRing) {
+    private func fanAnnulus(radius outer: CGFloat, inner: CGFloat) -> NSBezierPath {
+        let path = NSBezierPath()
+        path.appendArc(withCenter: center, radius: outer,
+                       startAngle: 0, endAngle: 360, clockwise: false)
+        path.appendArc(withCenter: center, radius: inner,
+                       startAngle: 360, endAngle: 0, clockwise: true)
+        path.close()
+        return path
+    }
+
+    private func drawFanHub() {
         let hubRect = NSRect(x: center.x - fanInner,
                              y: center.y - fanInner,
                              width: fanInner * 2,
                              height: fanInner * 2)
         let circle = NSBezierPath(ovalIn: hubRect)
-        NSColor(calibratedWhite: 0.045, alpha: 0.98).setFill()
+
+        let shadow = NSShadow()
+        shadow.shadowColor = NSColor.black.withAlphaComponent(0.50)
+        shadow.shadowBlurRadius = 18
+        shadow.shadowOffset = NSSize(width: 0, height: -5)
+        NSGraphicsContext.saveGraphicsState()
+        shadow.set()
+        NSColor(srgbRed: 0.090, green: 0.094, blue: 0.106, alpha: 0.99).setFill()
         circle.fill()
-        NSColor(calibratedWhite: 1, alpha: 0.045).setStroke()
-        circle.lineWidth = 1
+        NSGraphicsContext.restoreGraphicsState()
+
+        NSGraphicsContext.saveGraphicsState()
+        circle.addClip()
+        NSGradient(colors: [
+            NSColor(srgbRed: 0.110, green: 0.114, blue: 0.125, alpha: 1),
+            NSColor(srgbRed: 0.075, green: 0.078, blue: 0.090, alpha: 1)
+        ])?.draw(in: hubRect, angle: 90)
+        NSGraphicsContext.restoreGraphicsState()
+
+        NSColor(srgbRed: 0.231, green: 0.235, blue: 0.251, alpha: 1).setStroke()
+        circle.lineWidth = 1.5
         circle.stroke()
 
+        let s = max(0.55, fanScale)
         let para = NSMutableParagraphStyle()
         para.alignment = .center
         para.lineBreakMode = .byTruncatingMiddle
 
-        let s = max(0.55, fanScale)
-        let main: String
-        if totalBytes > 0 {
-            main = Bytes.format(totalBytes)
+        let name: String
+        if let fileName, !fileName.isEmpty {
+            name = fileName
         } else if count == 1 {
-            main = "1 FILE"
+            name = kind?.title ?? "1 File"
         } else {
-            main = "\(count) FILES"
+            name = "\(count) files"
         }
-        let size: CGFloat = main.count > 10 ? 14 : (main.count > 7 ? 16 : 18)
-        (main as NSString).draw(
-            in: NSRect(x: center.x - fanInner + 8,
-                       y: center.y - (size * s) / 2 + 1,
-                       width: fanInner * 2 - 16,
-                       height: size * s + 6),
-            withAttributes: [.font: NSFont.systemFont(ofSize: size * s, weight: .semibold),
-                             .foregroundColor: NSColor(calibratedWhite: 1, alpha: 0.96),
+        let format = fileFormat?.isEmpty == false
+            ? fileFormat!
+            : (kind?.title ?? "")
+        var parts: [String] = []
+        if count > 1 { parts.append("\(count) files") }
+        else if !format.isEmpty { parts.append(format) }
+        if totalBytes > 0 { parts.append(Bytes.format(totalBytes)) }
+        let meta = parts.joined(separator: " · ")
+
+        let iconSize = 31 * s
+        if let image = symbol(kind?.symbol ?? "doc", pointSize: iconSize,
+                              color: NSColor(srgbRed: 0.820, green: 0.820, blue: 0.835,
+                                             alpha: 1)) {
+            let size = image.size
+            let iconY = center.y + 28 * s
+            image.draw(in: NSRect(x: center.x - size.width / 2,
+                                  y: iconY - size.height / 2,
+                                  width: size.width, height: size.height))
+        }
+
+        let nameFont = NSFont.systemFont(ofSize: max(7.5, 14.5 * s), weight: .semibold)
+        let nameHeight = nameFont.pointSize * 1.35
+        (name as NSString).draw(
+            in: NSRect(x: center.x - fanInner + 14 * s,
+                       y: center.y - 1 * s - nameHeight / 2,
+                       width: 2 * fanInner - 28 * s, height: nameHeight),
+            withAttributes: [.font: nameFont,
+                             .foregroundColor: NSColor(srgbRed: 0.945, green: 0.945,
+                                                       blue: 0.953, alpha: 1),
+                             .paragraphStyle: para])
+
+        let metaFont = NSFont.systemFont(ofSize: max(6.5, 10.5 * s), weight: .medium)
+        let metaHeight = metaFont.pointSize * 1.35
+        (meta as NSString).draw(
+            in: NSRect(x: center.x - fanInner + 16 * s,
+                       y: center.y - 22 * s - metaHeight / 2,
+                       width: 2 * fanInner - 32 * s, height: metaHeight),
+            withAttributes: [.font: metaFont,
+                             .foregroundColor: NSColor(srgbRed: 0.631, green: 0.631,
+                                                       blue: 0.655, alpha: 1),
                              .paragraphStyle: para])
     }
 

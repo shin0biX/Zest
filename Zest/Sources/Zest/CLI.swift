@@ -157,6 +157,10 @@ enum CLI {
         view.center = NSPoint(x: side / 2, y: side / 2)
         view.count = 1
         view.kind = kind
+        view.fileName = snapshotURL.lastPathComponent
+        view.fileFormat = snapshotURL.pathExtension.isEmpty
+            ? kind.title.uppercased()
+            : snapshotURL.pathExtension.uppercased()
         view.totalBytes = snapshotURL.fileSize
         view.showBackdrop = true
         if let hover, hover >= 0 {
