@@ -164,8 +164,7 @@ swift build
 
 The [external harness](Zest/Harness/) drives real Finder drags through the shipped app
 and verifies outputs structurally — every commit in this repo passed it (it enables
-the app's drag-trace logging for its run and restores quiet mode after). See
-[AGENTS.md](AGENTS.md) for the full architecture, design decisions, and history.
+the app's drag-trace logging for its run and restores quiet mode after).
 
 ## License
 
