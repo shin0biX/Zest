@@ -940,29 +940,29 @@ final class WheelView: NSView {
         if case .format = choice.payload { isFormat = true } else { isFormat = false }
 
         // Stack content in screen space, not along the petal's radial axis.
-        // Every petal then reads icon-over-label like the reference, even at
-        // three o'clock and six o'clock. The shared anchor still comes from
-        // the petal geometry.
+        // Every petal on every surface reads the same way — icon over label —
+        // including formats, so the three modes share one content language.
+        // The shared anchor still comes from the petal geometry.
         let anchor = fanPoint(petal.angle, petal.labelRadius)
-        if !isFormat {
-            let iconPoint = NSPoint(x: anchor.x, y: anchor.y + 12 * artScale)
-            let iconSize = (hover ? 22.0 : 20.0) * artScale
-            if let image = symbol(choice.symbol, pointSize: iconSize,
-                                  color: hover
-                                      ? NSColor(srgbRed: 1.0, green: 0.702, blue: 0.302,
-                                                alpha: 1)
-                                      : NSColor(srgbRed: 0.816, green: 0.816, blue: 0.835,
-                                                alpha: 1)) {
-                let size = image.size
-                image.draw(in: NSRect(x: iconPoint.x - size.width / 2,
-                                      y: iconPoint.y - size.height / 2,
-                                      width: size.width, height: size.height))
-            }
+        var iconGlyph = choice.symbol
+        if case .format(let fmt) = choice.payload, !fmt.symbol.isEmpty {
+            iconGlyph = fmt.symbol
+        }
+        let iconPoint = NSPoint(x: anchor.x, y: anchor.y + 12 * artScale)
+        let iconSize = (hover ? 22.0 : (isFormat ? 21.0 : 20.0)) * artScale
+        if let image = symbol(iconGlyph, pointSize: iconSize,
+                              color: hover
+                                  ? NSColor(srgbRed: 1.0, green: 0.702, blue: 0.302,
+                                            alpha: 1)
+                                  : NSColor(srgbRed: 0.816, green: 0.816, blue: 0.835,
+                                            alpha: 1)) {
+            let size = image.size
+            image.draw(in: NSRect(x: iconPoint.x - size.width / 2,
+                                  y: iconPoint.y - size.height / 2,
+                                  width: size.width, height: size.height))
         }
 
-        let labelPoint = isFormat
-            ? anchor
-            : NSPoint(x: anchor.x, y: anchor.y - 7 * artScale)
+        let labelPoint = NSPoint(x: anchor.x, y: anchor.y - 7 * artScale)
         let para = NSMutableParagraphStyle()
         para.alignment = .center
         para.lineBreakMode = .byTruncatingTail
