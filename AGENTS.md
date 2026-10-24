@@ -12,7 +12,7 @@ modifier, and pick a target from the wheel. This is a personal build, not a dist
 
 - Repository root: `/Users/shin0bix/Downloads/targe` (git root; the app is under `Zest/`).
 - Remote: <https://github.com/shin0biX/zest>. Last commit:
-  `238089f Zest: fan wheel, five-tab settings, onboarding, app icon, media tools`.
+  `7c35f8c docs: describe the app on its own terms`.
 - Working backup made before the fan wheel work:
   `/Users/shin0bix/Downloads/targe_working_2026-10-23_1310` (670 MB, includes `.git`,
   sources, builds and uncommitted changes).
@@ -21,6 +21,78 @@ modifier, and pick a target from the wheel. This is a personal build, not a dist
   No third-party code or resources were copied, and the bundled media tools from a
   reference app were tested and rejected (see *Tool resolution and packaging*).
 - No network, no uploads, no telemetry, no third-party Swift packages.
+
+## Session delta (2026-10-24, repository hygiene and wheel redesign proposal)
+
+### Repository
+
+- `RE/` is **not tracked**. It stays on disk at `RE/` (4.4 MB of reference evidence),
+  is listed in `.gitignore`, and is not needed to build, test or run the app.
+- Two commits landed on `main` and were pushed: `238089f` (fan wheel, settings,
+  onboarding, app icon, media tools) and `7c35f8c` (docs: describe the app on its own
+  terms).
+- `6f154bf` was the original commit for that work. It carried `RE/` and named the
+  reference app; it was rewritten and force-pushed. Anyone who fetched before the
+  rewrite still holds it locally. GitHub keeps the dangling object addressable by SHA
+  until it garbage collects.
+- Source comments in `CLI.swift`, `Overlay.swift`, `Prefs.swift`, `Settings.swift` and
+  `WelcomeWindow.swift` no longer name the reference app. Check with
+  `git grep -in <name> -- . ':!RE'`; it must return nothing.
+- `.gitignore` now covers `RE/` and `Zest/Zest 2.app/`.
+- `swift build` clean after the doc and comment pass; the Swift diff was comments only,
+  so the 93/27 suite results still stand.
+
+### Wheel redesign: proposal stage, nothing built
+
+The operator rejected the current fan as ugly. **No shipping code changed.** Decision
+pending.
+
+Findings from the shipping fan (`Zest wheel out.png --style fan --mode tools`):
+
+- **Labels collide at 15 items.** 15 evenly divided slices give 24° each. At the label
+  radius of 180 pt the chord is `2·180·sin(12°) ≈ 75 pt`, minus padding ≈ 63 pt.
+  "EXACT SIZE" at 9.5 pt uppercase with tracking measures ≈ 70 pt, so it overflows into
+  the neighbouring petal — visible on EXACT SIZE, RESIZE, CROP, ROTATE, FLIP, ADJUST,
+  GRAYSCALE and ANNOTATE. `Overlay.swift` picks the fan font from item *count*
+  (`base = count > 12 ? 9.5 : …`) and never measures the label. The ring wheel's
+  `labelFont(for:in:)` does real chord fitting; the fan has no equivalent.
+- **The hub is 45% of the disc.** 112 pt inner radius inside a 496 pt disc holds one
+  line, "1 FILE".
+- Uniform grey trapezoids read as a pie chart, the `discRadius + 34` plate margin makes
+  it look like a sticker on a card, and 9.5 pt all-caps with tracking is the least
+  legible option available.
+
+Four directions were rendered and reviewed:
+
+| | Concept | Verdict |
+| --- | --- | --- |
+| A | Measured sunburst: wedge width allocated from measured label width, blended 55/45 with equal spacing so short labels do not become slivers | Fixes the defect, keeps the dial, geometry-only change |
+| B | Speedometer: glyphs on a hairline ring, centre becomes a detail readout | Best at rest, needs hover to read, weak on first use |
+| C | Spoke ring: line art, horizontal labels, no plate | Reads as a diagram, not a control |
+| D | Grid dock: 5×3 tiles plus a filename header | Most legible, no longer a wheel |
+
+Recommendation on record: **A with B's hub** — measured wedges; the centre carries
+filename / format / size on two lines instead of "1 FILE"; the armed wedge gets the
+accent stroke and a lifted glyph. No new interaction model, no harness rewrite beyond
+the radius constant.
+
+The mockup renderer lives outside the repository at
+`/private/var/folders/pk/twz1zd0s0l9b9_2ytf9vq80c0000gn/T/opencode/wheel-mock/`.
+`wheel-mock.swift` draws the four directions, `sheet.swift` composes the contact sheet.
+It is a standalone AppKit binary, never links Zest, and rebuilds in about two seconds:
+
+```sh
+cd /private/var/folders/pk/twz1zd0s0l9b9_2ytf9vq80c0000gn/T/opencode/wheel-mock
+swiftc -O wheel-mock.swift -o wheel-mock && ./wheel-mock .
+swiftc -O sheet.swift -o sheet && ./sheet
+```
+
+That path is a temp directory and may be swept. The table above carries enough detail to
+rebuild any of the four if the sources are gone.
+
+**Next action:** pick a direction, then rebuild the fan in `Overlay.swift`
+(`fanPetalPath`, the label anchor, `drawBackdrop`, and the hub redraw), re-render with
+`Zest wheel`, and add a fan label-fit check to `uitest`.
 
 ## Session delta (2026-10-23, media tools, packaging, verification)
 
@@ -221,6 +293,9 @@ the existing harness path intact.
 
 ## Current state
 
+- **Wheel redesign is open.** The fan was rejected as ugly; four directions are rendered
+  and awaiting a decision. No shipping code has changed for it yet. See the session delta
+  at the top.
 - **Debug compiles clean.** `swift build`: zero errors, zero warnings.
 - **Headless suite green.** **93 passed · 0 failed · 0 skipped** in debug, including the
   three media tools and both document layout modes.
@@ -271,6 +346,10 @@ Do not mark an interaction row as fully tested without the real drag or the manu
 
 ## Resume checklist (in order)
 
+0. **The active thread is the wheel redesign** — proposal stage, nothing built. Read
+   *Wheel redesign: proposal stage* at the top of this file, pick a direction with the
+   operator, then rebuild the fan in `Overlay.swift`. Everything below is the standing
+   verification path and applies once that lands.
 1. **Orient on the surfaces.** `Catalog.swift` holds the format, tool and action tables;
    `Prefs.swift` the per-format defaults; `Settings.swift` every settings page. The local
    `RE/` folder is ignored by git and not needed for any of this.
@@ -587,8 +666,9 @@ expected to grow; do not weaken structural verification to keep the count stable
   unique; no choice appears on two surfaces of the same wheel.
 - Wheel: every slice in every ring hit-tests to its choice; **fan mode renders one ring,
   switches convert → tools → actions, and every fan slice hit-tests**; hub/outside cancel;
-  every ring label fits its chord at `WheelView.labelFont(for:in:)`; hover follows rings
-  and clears in the hub; a fake drop commits the tools ring and reports `.tools`.
+  every ring label fits its chord at `WheelView.labelFont(for:in:)` — **fan labels are not
+  checked and currently overflow at 15 items**; hover follows rings and clears in the hub;
+  a fake drop commits the tools ring and reports `.tools`.
 - Overlay: opens at the anchor, switching emphasis keeps all three rings (the test forces
   `wheelStyle = .rings` for this case), Escape closes, arrows step across rings and Return
   commits with the hovered ring’s mode.
@@ -648,9 +728,10 @@ step with `Catalog.swift`.
    re-target a synthetic drag to a panel that appears mid-session. Fan and ring drops are
    now driven by real Finder drags, and `uitest` covers the mode switch logic; one manual
    drag with a real Shift/Command/Control tap is still required.
-2. **The fan wheel has no pagination.** It draws every choice, up to 15 image tools, as a
-   petal. Showing a smaller set at a time is not implemented. Labels fit at 9.5 pt for
-   dense surfaces, but a paged/overflow petal is still open.
+2. **The fan wheel has no pagination and its labels do not fit.** It draws every choice,
+   up to 15 image tools, as a petal. At 15 slices the labels overlap their neighbours —
+   see *Wheel redesign: proposal stage* above for the measurement and the four candidate
+   directions. Showing a smaller set at a time is also not implemented.
 3. **PDF compression still rasterizes.** Text, links, annotations, and form fields are
    lost. Per-page media boxes are preserved; compression remains image-based.
 4. **Embedded image extraction has a fallback.** Only image XObjects are pulled at native
@@ -779,8 +860,11 @@ step with `Catalog.swift`.
 - Ring labels must fit the wedge chord: `2 · midRadius · sin(step/2) − 12` at
   `WheelView.labelFont(for:in:)`. Do not shrink the radius or raise the font without
   re-running `uitest`.
-- Fan labels use their own 9.5–13 pt typography. The fit test covers rings only;
-  re-render `Zest wheel --style fan --mode tools` after changing fan title lengths.
+- Fan labels use their own 9.5–13 pt typography and **do not currently fit at 15 items**.
+  Nothing measures them: `Overlay.swift` chooses the size from `count` alone. Any fan
+  redesign must measure the rendered string against its slice and add the equivalent of
+  `labelFont(for:in:)` for the fan. The fit test covers rings only; re-render
+  `Zest wheel --style fan --mode tools` after changing fan title lengths.
 - PDF compression must pass a per-page `kCGPDFContextMediaBox`; do not regress to one
   default box.
 - PDF image extraction must keep native XObject pixels; use the page render only when a
@@ -825,7 +909,8 @@ manual run. Do not promote a `[~]` row to `[x]` without the real drag or manual 
   manual)
 - [~] **Fan wheel**: one surface, compact 496 pt disc, dark rounded plate, gray petals,
   label-only formats, icon + label tools/actions, near-black hub with file size, mode
-  rebuild (uitest + `Zest wheel`; external harness 12/12 on this geometry)
+  rebuild (uitest + `Zest wheel`; external harness 12/12 on this geometry). **Labels
+  collide at 15 items — redesign pending, do not treat the current fan as final.**
 - [~] **Settings**: compact 480×620 layout, custom orange pill tabs, flat cards,
   search/sidebar Formats, compatibility tables, Folders, centered About with **no
   unlock/free-trial UI**; all five tabs and every format page build (`uitest`), all five
