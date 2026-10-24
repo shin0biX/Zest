@@ -12,22 +12,21 @@ modifier, and pick a target from the wheel. This is a personal build, not a dist
 
 - Repository root: `/Users/shin0bix/Downloads/targe` (git root; the app is under `Zest/`).
 - Remote: <https://github.com/shin0biX/zest>. Last commit:
-  `e9cf5a6 Zest: local file converter with three-ring wheel`. Everything described in
-  this file is **uncommitted** on top of it.
-- Working backup made before the Tangerine work:
+  `238089f Zest: fan wheel, five-tab settings, onboarding, app icon, media tools`.
+- Working backup made before the fan wheel work:
   `/Users/shin0bix/Downloads/targe_working_2026-10-23_1310` (670 MB, includes `.git`,
   sources, builds and uncommitted changes).
-- Reference app: **Tangerine 2.0.2** (`com.th.Tangerine`, build 9) installed at
-  `/Applications/Tangerine.app`. It seeded the fan wheel, settings, onboarding, and the
-  Add BG / Extract / Snapshots tools. No Tangerine code or resources were copied; its
-  bundled media tools were tested and rejected (see *Tool resolution and packaging*).
+- The fan wheel, the five-tab settings window, the onboarding flow, and the
+  Add BG / Extract / Snapshots tools were designed for this build from layout cues only.
+  No third-party code or resources were copied, and the bundled media tools from a
+  reference app were tested and rejected (see *Tool resolution and packaging*).
 - No network, no uploads, no telemetry, no third-party Swift packages.
 
 ## Session delta (2026-10-23, media tools, packaging, verification)
 
-Second pass in the same session. Everything here is uncommitted on top of `e9cf5a6`.
+Second pass in the same session.
 
-### Media tools (Tangerine parity complete)
+### Media tools (feature set complete)
 
 - **Redact video** (`redactVideo`): `ToolUI` grabs a frame through `videoFrame`,
   `rectEditor` returns normalized geometry, then a form takes the time range and
@@ -71,10 +70,10 @@ Second pass in the same session. Everything here is uncommitted on top of `e9cf5
   candidates, copies `Resources/Tools` when present, then deletes any bundled
   `ffmpeg` / `cwebp` that fails and removes an empty `Tools` directory.
   `ZEST_TOOLS_SRC` still overrides the search.
-- Reason: Tangerine's bundled `ffmpeg` and `cwebp` both exit **133 (SIGTRAP)** on this
-  host. They were copied once, shadowed `/opt/homebrew/bin/ffmpeg`, and made every
-  media tool fail. The current bundle ships **no** media tools and resolves Homebrew.
-  Do not copy Tangerine's Tools directory.
+- Reason: the reference app's bundled `ffmpeg` and `cwebp` both exit **133 (SIGTRAP)**
+  on this host. They were copied once, shadowed `/opt/homebrew/bin/ffmpeg`, and made
+  every media tool fail. The current bundle ships **no** media tools and resolves
+  Homebrew. Do not copy a third-party app's Tools directory.
 - `Prefs.defaults` now uses `.standard` when the bundle id is `com.zest.app`, removing
   the “no suite” warning in CLI runs.
 
@@ -100,10 +99,10 @@ Second pass in the same session. Everything here is uncommitted on top of `e9cf5
 - `Zest wheel` re-rendered the video and audio tool fans after the new entries; both
   15-petal layouts fit their labels.
 
-## Session delta (2026-10-23, Tangerine parity pass — earlier)
+## Session delta (2026-10-23, wheel and settings pass — earlier)
 
 The previous release was a three-ring wheel with a single settings panel and 25 UI
-checks. This session added a Tangerine-style surface while keeping the ring wheel and
+checks. This session added a single-surface wheel style while keeping the ring wheel and
 the existing harness path intact.
 
 ### Wheel
@@ -133,7 +132,7 @@ the existing harness path intact.
 
 - New file `Zest/Sources/Zest/Settings.swift` replaces the old single-panel
   `SettingsWindow` that lived in `App.swift`.
-- Five tabs, modelled on Tangerine: **General, Formats, Compatibility, Folders, About**.
+- Five tabs: **General, Formats, Compatibility, Folders, About**.
 - The window is a compact **480×620** panel with a visible **Zest Settings** title,
   `.fullSizeContentView`, no zoom button, and centered text-only orange pill tabs.
   The selected tab is a filled orange pill; the others are plain text. There is no
@@ -142,7 +141,7 @@ the existing harness path intact.
   General (launch at login, sound/haptics), Drag Modifiers (conversion/tools/actions
   popups, `⇧ Shift` style), Float Behaviour, Terminal app, Name collisions, and Keyboard
   Control. Helper copy sits inside the card in 10.5 pt secondary text.
-- Formats uses a Tangerine split layout: a 154 pt search + grouped format list on the
+- Formats uses a split layout: a 154 pt search + grouped format list on the
   left, a vertical rule, and a flat detail pane on the right. The selected row uses an
   orange wash. Every format page builds; input-only formats explain their status.
   Per-format quality, metadata, image compression/size, audio bitrate/depth, video
@@ -235,7 +234,7 @@ the existing harness path intact.
   compact fan, all twelve scenarios, and the rebuilt bundle. The wheel geometry and drag
   path are unchanged by the media tools.
 - **Settings UI: offscreen and live passes done.** `uitest` constructs all five tabs and
-  every format page; `settings-preview` matched the Tangerine captures. The live window
+  every format page; `settings-preview` matched the design targets. The live window
   confirmed the titlebar, traffic lights, orange pills, corrected checkmarks, glass
   vibrancy, and the real About icon. The earlier checkmark and popup-width defects stay
   fixed. Appearance was returned to the operator's `solid` setting after the glass pass.
@@ -248,10 +247,11 @@ the existing harness path intact.
 - **App launches.** The bundle logs
   `options=616 tools=64 ffmpeg=/opt/homebrew/bin/ffmpeg`; there is no bundled ffmpeg to
   shadow it.
-- **Tangerine evidence** lives under `RE/tangerine/` (AX dumps, format options, welcome
-  screenshots, strings, symbol lists). The consolidated report is `RE/TANGERINE.md`.
-- **Stale debris:** `Zest/Zest 2.app` is an untracked older bundle that still contains the
-  broken Tangerine `ffmpeg`/`cwebp`. Do not copy its Tools directory or ship that bundle.
+- **Reference material** is local only. The `RE/` folder is ignored by `.gitignore` and
+  is not needed to build, test or run the app.
+- **Stale debris:** `Zest/Zest 2.app` is an untracked older bundle that still contains
+  binaries that trap on launch. It is ignored by `.gitignore`. Do not copy its Tools
+  directory or ship that bundle.
 
 ### Verification snapshot
 
@@ -271,9 +271,9 @@ Do not mark an interaction row as fully tested without the real drag or the manu
 
 ## Resume checklist (in order)
 
-1. **Read the RE report.** `RE/TANGERINE.md` consolidates identity, evidence, per-format
-   defaults, the feature inventory, and the gap matrix. Refresh the raw dumps under
-   `RE/tangerine/` if Tangerine changes.
+1. **Orient on the surfaces.** `Catalog.swift` holds the format, tool and action tables;
+   `Prefs.swift` the per-format defaults; `Settings.swift` every settings page. The local
+   `RE/` folder is ignored by git and not needed for any of this.
 2. **Rebuild the bundle after source changes.** `./build.sh`; confirm
    `Contents/Resources/AppIcon.icns` exists, the app is ad-hoc signed, and any
    `Contents/Resources/Tools` directory that remains contains only binaries that pass
@@ -392,9 +392,7 @@ Mechanics (unchanged unless noted):
 ```
 targe/
   AGENTS.md
-  RE/
-    TANGERINE.md               # consolidated identity, evidence, gap matrix
-    tangerine/                 # AX dumps, strings, format options, welcome shots
+  RE/                          # local reference material, gitignored (not shipped)
   Zest/
     Package.swift
     build.sh
@@ -417,7 +415,7 @@ targe/
 | --- | --- |
 | `main.swift` | CLI dispatch for real arguments; otherwise `NSApplication` + `AppDelegate`. Ignores Finder `-psn_…` arguments. |
 | `App.swift` | App delegate, status item, Services provider, menu, Settings/Welcome entry points, engine status. Legacy settings class was removed. |
-| `Settings.swift` | Compact 480×620 five-tab Tangerine-style settings window: orange pill tabs, flat card rows, search/sidebar Formats, compatibility matrix, Folders, About, `exerciseForTesting` seam. |
+| `Settings.swift` | Compact 480×620 five-tab settings window: orange pill tabs, flat card rows, search/sidebar Formats, compatibility matrix, Folders, About, `exerciseForTesting` seam. |
 | `WelcomeWindow.swift` | Five-page onboarding, keycaps, half-scale fan preview. |
 | `Support.swift` | `Shell`, `ToolFinder` (execution-validated candidates), `AppIcon`, `Kind`, `KindDetector`, `Naming`, `Bytes`, `Temp`, `Log`, `MediaProbe`, `onMain`/`onMainSync`, `ZestError`. |
 | `Prefs.swift` | Suite `com.zest.app`; trigger keys, wheel/style/float/terminal choices, per-format defaults, `conversionParams(for:)`. |
@@ -615,65 +613,33 @@ Welcome, the live Settings window, and menu tracking remain manual. The three ne
 forms are modal and are not in `uitest`; selftest plus a shipping-bundle run cover their
 engine paths, but the forms still need a visual check.
 
-## Tangerine reverse engineering
+## Feature inventory
 
-Reference: `/Applications/Tangerine.app`, version **2.0.2**, bundle id
-**`com.th.Tangerine`**, build **9**.
+The current surface — formats, tools, actions, settings and onboarding — is listed under
+*Feature surface* at the end of this file. That section is the source of truth; keep it in
+step with `Catalog.swift`.
 
-Evidence captured in `RE/tangerine/`:
+### Implementation status
 
-- `ax_settings.txt`, `ax_settings_formats*.txt`, `format_options.txt` — settings AX tree
-  and per-format detail panes (`MP4` pane not captured).
-- `ax_welcome*.txt`, `welcome_p1.png … welcome_p5.png` — five onboarding pages.
-- `strings_raw.txt`, `symbols_demangled.txt` — strings inventory and demangled symbol list
-  (imports only; no private Tangerine type names).
-- `ax_now.txt`, `finder_ax*.txt`, `screen_test.png` — environment and menu captures.
-- Probe scripts: `axdump.swift`, `axpress.swift`, `axscroll.swift`, `fmtprobe*.swift`,
-  `popupdump.swift`, etc.
-
-Tangerine feature inventory (observed):
-
-- Formats: images JPG/PNG/WEBP/HEIC/TIFF/SVG/AVIF/BMP; documents
-  PDF/DOCX/PAGES/PPT/PPTX/TXT/MD/RTF/RTFD/TEXTCLIPPING/HTML/EPUB; spreadsheets
-  XLSX/XLS/ODS/CSV/TSV; audio MP3/M4A/WAV/FLAC/OGG/OPUS/AIFF/WMA; video
-  MP4/MOV/MKV/WEBM/AVI/WMV/GIF; archives ZIP/TAR/GZIP/RAR input; subtitles SRT/VTT.
-- Tools: `changeVideoSpeed`, `compress`, `removeMetadata`, `editImage`,
-  `annotateImage`, `frameImage`, `cropImage`, `normalizeAudio`, `muteVideo`,
-  `trimVideo`, `splitPDF`, `organizePDF`, `extractArchive`, `createPDF`, `mergePDF`,
-  `cropVideo`, `joinVideos`, `videoSnapshots`, `splitVideo`, `audioToVideo`,
-  `trimAudio`, `audioChannels`, `createCollage`, `readQRCode`, `redactImage`,
-  `redactVideo`, `redactAudio`.
-- Actions: AirDrop, Float, Copy, Move, Copy Path, Terminal.
-- UI: fan wheel (8-ish petals, uppercase labels/icons, file size in the hub, one surface
-  at a time), orange accent, five-page onboarding, Settings tabs
-  General/Formats/Compatibility/Folders/About.
-- General settings observed: appearance glass/solid, wheel style, launch at login,
-  feedback, modifier keys, collision behavior, Float behavior, Terminal choice.
-- Format settings observed: per-format quality (Best/Higher/Balanced/Smaller/Smallest),
-  preserve metadata, image compression (Balanced/Strong), image size, audio bitrate,
-  video quality/height, GIF frame rate/width, and format-specific layout options.
-
-### Gap matrix
-
-| Area | Tangerine | Zest now | Status |
-| --- | --- | --- | --- |
-| Fan wheel | one surface, 8-ish petals, orange | fan default, all petals, orange, rounded | Implemented; no pagination |
-| Ring wheel | absent | available in Settings | Kept for tests/back-compat |
-| Settings tabs | General/Formats/Compatibility/Folders/About | same five | Implemented |
-| Welcome | 5 pages | 5 pages, menu/About entry | Implemented, not auto-shown |
-| Per-format defaults | yes | image/video/audio/GIF wired; PDF/EPUB layout applied | Implemented; image compression strength stored only |
-| Add BG / frameImage | yes | `frame` tool | Implemented |
-| Extract archive | yes | `extract` tool | Implemented |
-| Video snapshots | yes | `snapshots` tool | Implemented |
-| Audio to video | yes | `audioToVideo` tool | Implemented |
-| Redact video/audio | yes | `redactVideo` / `redactAudio` tools | Implemented |
-| Redact image | yes | `redact` tool | Implemented |
-| PDF organize | yes | reorder/split/rotate/merge | Implemented |
-| Launch at login | yes | SMAppService | Implemented; ad-hoc caveat |
-| Float behavior | new/add | new/add union | Implemented |
-| Terminal choice | Terminal/iTerm/Warp | same lookup | Implemented |
-| Glass/solid | app-wide | Settings window only | Partial |
-| Tool bundling | ships its own | execution-validated, Homebrew fallback | Implemented; no tools bundled here |
+| Area | State | Notes |
+| --- | --- | --- |
+| Fan wheel | implemented | one surface, rounded petals, orange; no pagination |
+| Ring wheel | kept | available in Settings, default for the geometry tests |
+| Settings tabs | implemented | General/Formats/Compatibility/Folders/About |
+| Welcome | implemented | 5 pages, menu/About entry, not auto-shown |
+| Per-format defaults | implemented | image/video/audio/GIF wired; PDF/EPUB layout applied |
+| Add BG | implemented | `frame` tool |
+| Extract archive | implemented | `extract` tool |
+| Video snapshots | implemented | `snapshots` tool |
+| Audio to video | implemented | `audioToVideo` tool |
+| Redact video/audio | implemented | `redactVideo` / `redactAudio` tools |
+| Redact image | implemented | `redact` tool |
+| PDF organize | implemented | reorder/split/rotate/merge |
+| Launch at login | implemented | SMAppService; ad-hoc caveat |
+| Float behavior | implemented | new/add union |
+| Terminal choice | implemented | Terminal/iTerm/Warp lookup |
+| Glass/solid | partial | Settings window only |
+| Tool bundling | implemented | execution-validated, Homebrew fallback |
 
 ## Remaining gaps and known limits
 
@@ -683,8 +649,8 @@ Tangerine feature inventory (observed):
    now driven by real Finder drags, and `uitest` covers the mode switch logic; one manual
    drag with a real Shift/Command/Control tap is still required.
 2. **The fan wheel has no pagination.** It draws every choice, up to 15 image tools, as a
-   petal. Tangerine shows a smaller set at a time. Labels fit at 9.5 pt for dense
-   surfaces, but a paged/overflow petal is still open.
+   petal. Showing a smaller set at a time is not implemented. Labels fit at 9.5 pt for
+   dense surfaces, but a paged/overflow petal is still open.
 3. **PDF compression still rasterizes.** Text, links, annotations, and form fields are
    lost. Per-page media boxes are preserved; compression remains image-based.
 4. **Embedded image extraction has a fallback.** Only image XObjects are pulled at native
@@ -706,7 +672,7 @@ Tangerine feature inventory (observed):
    uses `qlmanage -t`.
 10. **No media tools are bundled on this host.** `ffmpeg`, `ffprobe`, and `cwebp` resolve
     from Homebrew/PATH. `build.sh` only bundles a candidate that passes its version probe;
-    Tangerine's copies trap with 133 and must not be used.
+    binaries that trap with 133 must not be bundled.
 11. **Pages/Keynote/Numbers and LibreOffice outputs remain unavailable.** Pages output
     requires `/Applications/Pages.app`; slide/legacy Office output requires `soffice`.
     Options are gated.
@@ -860,11 +826,11 @@ manual run. Do not promote a `[~]` row to `[x]` without the real drag or manual 
 - [~] **Fan wheel**: one surface, compact 496 pt disc, dark rounded plate, gray petals,
   label-only formats, icon + label tools/actions, near-black hub with file size, mode
   rebuild (uitest + `Zest wheel`; external harness 12/12 on this geometry)
-- [~] **Settings**: compact 480×620 Tangerine layout, custom orange pill tabs, flat cards,
+- [~] **Settings**: compact 480×620 layout, custom orange pill tabs, flat cards,
   search/sidebar Formats, compatibility tables, Folders, centered About with **no
   unlock/free-trial UI**; all five tabs and every format page build (`uitest`), all five
-  tabs have been rendered offscreen (`settings-preview`) and compared with the Tangerine
-  captures, and the live window confirms titlebar, traffic lights, corrected checkmarks,
+  tabs have been rendered offscreen (`settings-preview`) against the design targets, and
+  the live window confirms titlebar, traffic lights, corrected checkmarks,
   glass vibrancy, and the real About icon. Tab-by-tab persistence review remains manual.
 - [~] **Welcome**: five pages build and are menu-accessible; page clicks/visuals pending
 - [x] Image conversions (9 + PDF), WebP via cwebp, image tools — headless

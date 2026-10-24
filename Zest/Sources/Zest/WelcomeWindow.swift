@@ -2,9 +2,9 @@ import AppKit
 
 // MARK: - Welcome
 
-/// Five-page Getting Started window. The first page is the orange Tangerine
-/// welcome; pages two through four show the fan wheel in each mode and name
-/// the modifier that arms it; the last page explains folder access.
+/// Five-page Getting Started window. The first page is the orange welcome;
+/// pages two through four show the fan wheel in each mode and name the
+/// modifier that arms it; the last page explains folder access.
 final class WelcomeWindow: NSWindowController {
     static let shared = WelcomeWindow()
 

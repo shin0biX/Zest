@@ -282,8 +282,8 @@ final class WheelView: NSView {
     private var fanInner: CGFloat { Self.fanInnerRadius * fanScale }
     private var fanAccent: NSColor { .systemOrange }
 
-    /// Rings keeps all three surfaces visible. Fan is the Tangerine-style
-    /// single-surface layout; emphasis picks which surface the fan shows.
+    /// Rings keeps all three surfaces visible. Fan is the single-surface
+    /// layout; emphasis picks which surface the fan shows.
     var style: WheelStyle = .rings {
         didSet {
             guard oldValue != style else { return }
@@ -577,9 +577,9 @@ final class WheelView: NSView {
     }
 
     private func drawBackdrop(_ ctx: CGContext) {
-        // Tangerine-style plate: a single dark rounded square behind the
-        // wheel instead of a translucent glow. It keeps every label legible
-        // on bright wallpapers and reads as one deliberate surface.
+        // Opaque plate: a single dark rounded square behind the wheel
+        // instead of a translucent glow. It keeps every label legible on
+        // bright wallpapers and reads as one deliberate surface.
         let radius = discRadius + 34
         let rect = NSRect(x: center.x - radius, y: center.y - radius,
                           width: radius * 2, height: radius * 2)
@@ -641,9 +641,9 @@ final class WheelView: NSView {
 
     // MARK: Fan wheel
 
-    /// Tangerine-style fan: one surface, eight-ish rounded petals, the file
-    /// size in the hub. The three-ring layout stays available in Settings and
-    /// is still the default for `WheelView` so the headless geometry tests can
+    /// Fan layout: one surface, eight-ish rounded petals, the file size in
+    /// the hub. The three-ring layout stays available in Settings and is
+    /// still the default for `WheelView` so the headless geometry tests can
     /// exercise every ring without touching preferences.
     private func drawFan() {
         guard let ring = rings.first else { return }
@@ -699,7 +699,7 @@ final class WheelView: NSView {
         let isFormat: Bool
         if case .format = choice.payload { isFormat = true } else { isFormat = false }
 
-        // Tangerine's hub is just the file size; the petals carry the labels.
+        // The hub is just the file size; the petals carry the labels.
         // Formats sit on the petal's midline. Tools and actions stack a white
         // glyph and label vertically at that same anchor, so side petals do
         // not push their icon outboard of the text.

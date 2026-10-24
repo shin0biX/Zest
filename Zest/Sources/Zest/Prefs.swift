@@ -41,7 +41,7 @@ enum TriggerKey: String, CaseIterable {
         }
     }
 
-    /// Popup label in the Tangerine-style settings window.
+    /// Popup label in the settings window.
     var settingsTitle: String { "\(glyph)  \(name)" }
 }
 
@@ -295,8 +295,8 @@ enum Prefs {
     // MARK: Per-format defaults
     //
     // Each key is namespaced by the output extension so a JPG default never
-    // leaks into PNG or HEIC. Missing values fall back to the Tangerine-like
-    // defaults registered above.
+    // leaks into PNG or HEIC. Missing values fall back to the defaults
+    // registered above.
 
     private static func key(_ name: String, _ ext: String) -> String {
         "format.\(name).\(ext.lowercased())"

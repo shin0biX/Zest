@@ -70,8 +70,8 @@ enum CLI {
 
     // MARK: settings preview
 
-    /// Development-only preview used while matching the Tangerine settings
-    /// layout. Renders one tab offscreen so no screen-recording grant is needed.
+    /// Development-only preview of the settings layout. Renders one tab
+    /// offscreen so no screen-recording grant is needed.
     /// Usage: `Zest settings-preview <tab 0-4> <out.png>`.
     private static func settingsPreview(_ args: [String]) -> Int32 {
         guard args.count >= 2 else {

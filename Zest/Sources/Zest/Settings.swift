@@ -7,7 +7,7 @@ private final class FlippedDocumentView: NSView {
     override var isFlipped: Bool { true }
 }
 
-// MARK: - Tangerine-style primitives
+// MARK: - Settings primitives
 
 private enum SettingsPalette {
     static var card: NSColor {
@@ -161,7 +161,7 @@ private final class SettingsTabButton: NSButton {
 
 /// A compact segmented control with an orange selected segment. AppKit's
 /// native segmented control follows the system accent, which is blue on many
-/// Macs; Tangerine's settings are orange regardless of that system setting.
+/// Macs; this window stays orange regardless of that system setting.
 private final class SettingsSegmentedControl: NSControl {
     private let items: [String]
     private(set) var selectedIndex: Int
@@ -431,9 +431,9 @@ private final class SettingsPillButton: NSButton {
 
 // MARK: - Settings window
 
-/// Five-tab settings window modelled on Tangerine 2.0.2: General, Formats,
-/// Compatibility, Folders, About. Everything is programmatic AppKit and every
-/// value lands in the `com.zest.app` suite immediately.
+/// Five-tab settings window: General, Formats, Compatibility, Folders, About.
+/// Everything is programmatic AppKit and every value lands in the
+/// `com.zest.app` suite immediately.
 final class SettingsWindow: NSWindowController, NSSearchFieldDelegate {
     private enum Tab: Int, CaseIterable {
         case general, formats, compatibility, folders, about
@@ -504,7 +504,7 @@ final class SettingsWindow: NSWindowController, NSSearchFieldDelegate {
         ])
 
         // The titlebar is part of the content view, so the tab row starts just
-        // under the traffic lights, exactly where Tangerine puts it.
+        // under the traffic lights.
         tabStack.orientation = .horizontal
         tabStack.alignment = .centerY
         tabStack.spacing = 8
@@ -1970,8 +1970,8 @@ final class SettingsWindow: NSWindowController, NSSearchFieldDelegate {
 
     // MARK: Test seams
 
-    /// Development-only hook used to photograph one tab while matching the
-    /// Tangerine settings layout. Not called by the shipping app.
+    /// Development-only hook used to photograph one tab of the settings
+    /// layout. Not called by the shipping app.
     func showTabForPreview(_ index: Int) {
         show(tab: Tab(rawValue: index) ?? .general)
     }
