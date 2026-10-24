@@ -54,8 +54,12 @@ enum PDFEngine {
             return [out]
         case "epub":
             let out = Naming.output(for: input, ext: "epub")
-            try EpubWriter.write(title: input.deletingPathExtension().lastPathComponent,
-                                 pages: textPages(doc), to: out)
+            if params["epubLayout"] == "fixed" {
+                try writeFixedEPUB(doc, input: input, to: out)
+            } else {
+                try EpubWriter.write(title: input.deletingPathExtension().lastPathComponent,
+                                     pages: textPages(doc), to: out)
+            }
             return [out]
         case "rtf":
             let out = Naming.output(for: input, ext: "rtf")
@@ -115,6 +119,15 @@ enum PDFEngine {
             ctx.endPDFPage()
         }
         ctx.closePDF()
+    }
+
+    /// Fixed-layout EPUB: each page becomes an image with its own viewport.
+    static func writeFixedEPUB(_ doc: PDFDocument, input: URL, to out: URL) throws {
+        let images = try renderPageImages(doc, dpi: 144)
+        guard !images.isEmpty else { throw ZestError("No pages rendered") }
+        try EpubWriter.writeFixed(
+            title: input.deletingPathExtension().lastPathComponent,
+            images: images, to: out)
     }
 
     // MARK: Render

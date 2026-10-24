@@ -42,11 +42,19 @@ enum Planner {
             return
         }
 
+        var params = Prefs.conversionParams(for: fmt)
+        // Layout defaults live on the source format page (DOCX, Pages, EPUB),
+        // so read them from the input rather than the output extension.
+        if let source = all.first?.pathExtension.lowercased(),
+           fmt.outKind == .pdf || fmt.ext.lowercased() == "epub" {
+            params["pdfLayout"] = Prefs.pdfLayout(for: source)
+            params["epubLayout"] = Prefs.epubLayout(for: source)
+        }
         for url in all {
             let token = HUDController.shared.begin(url.lastPathComponent)
             DispatchQueue.global(qos: .userInitiated).async {
                 do {
-                    let outputs = try Convert.perform(url, to: fmt)
+                    let outputs = try Convert.perform(url, to: fmt, params: params)
                     onMain { HUDController.shared.succeed(token, outputs: outputs) }
                 } catch {
                     onMain { HUDController.shared.fail(token, message: error.localizedDescription) }
@@ -113,6 +121,7 @@ enum Planner {
     private static func toolTitle(_ id: String) -> String {
         let all = Catalog.imageTools + Catalog.videoTools + Catalog.audioTools
             + Catalog.pdfTools + Catalog.docTools + Catalog.subtitleTools
+            + Catalog.archiveTools
         return all.first { $0.id == id }?.title ?? id
     }
 
@@ -253,8 +262,13 @@ enum Actions {
     }
 
     private static func openTerminal(_ urls: [URL]) {
-        let terminal = URL(fileURLWithPath: "/System/Applications/Utilities/Terminal.app")
         guard let first = urls.first else { return }
+        let choice = Prefs.terminalApp
+        let resolved = NSWorkspace.shared.urlForApplication(withBundleIdentifier: choice.bundleID)
+        let candidate = resolved ?? URL(fileURLWithPath: choice.fallbackPath)
+        let terminal = FileManager.default.fileExists(atPath: candidate.path)
+            ? candidate
+            : URL(fileURLWithPath: "/System/Applications/Utilities/Terminal.app")
         let dir = urls.count == 1 && first.isDirectory
             ? first
             : first.deletingLastPathComponent()
@@ -262,7 +276,7 @@ enum Actions {
         NSWorkspace.shared.open([dir], withApplicationAt: terminal,
                                 configuration: config) { _, error in
             if let error {
-                onMain { Alert.error("Couldn't open Terminal", error) }
+                onMain { Alert.error("Couldn't open \(choice.title)", error) }
             }
         }
     }

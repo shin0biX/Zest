@@ -24,6 +24,8 @@ enum ToolRunner {
             return try runOffice(tool: tool, inputs: inputs, params: params)
         case .subtitle:
             return try runSubtitle(tool: tool, inputs: inputs, params: params)
+        case .archive:
+            return try runArchive(tool: tool, inputs: inputs, params: params)
         default:
             throw ZestError("No tools for .\(first.pathExtension) files")
         }
@@ -49,6 +51,10 @@ enum ToolRunner {
             guard let crop = params["crop"], !crop.isEmpty else { throw ZestError("No crop area") }
             let image = try ImageOps.apply(try ImageEngine.load(input), params: ["crop": crop])
             return [try write(image, input: input, suffix: "cropped", ext: params["format"])]
+        case "frame":
+            let image = ImageOps.addBackground(try ImageEngine.load(input), params: params)
+            return [try write(image, input: input, suffix: "framed",
+                              ext: params["format"] ?? "png")]
         case "rotate":
             let degrees = Double(params["degrees"] ?? "90") ?? 90
             let image = try ImageOps.apply(try ImageEngine.load(input), params: ["rotate": "\(degrees)"])
@@ -326,6 +332,28 @@ enum ToolRunner {
             let out = Naming.output(for: input, ext: params["format"] ?? "png", suffix: "frame")
             try MediaEngine.snapshot(input, at: time, to: out)
             return [out]
+        case "snapshots":
+            let format = (params["format"] ?? "png").lowercased()
+            var times = (params["times"] ?? "")
+                .split(whereSeparator: { $0 == "," || $0 == " " })
+                .compactMap { Double($0) }
+                .filter { $0 >= 0 }
+            if times.isEmpty {
+                let count = max(1, min(30, Int(params["count"] ?? "") ?? 6))
+                if count == 1 {
+                    times = [0]
+                } else if info.duration > 0 {
+                    times = (0..<count).map { Double($0) / Double(count - 1) * info.duration }
+                } else {
+                    times = (0..<count).map(Double.init)
+                }
+            }
+            return try times.enumerated().map { index, time in
+                let out = Naming.output(for: input, ext: format,
+                                        suffix: String(format: "frame-%02d", index + 1))
+                try MediaEngine.snapshot(input, at: time, to: out)
+                return out
+            }
         case "gif":
             let out = Naming.output(for: input, ext: "gif", suffix: "loop")
             _ = try MediaEngine.makeGIF(input, to: out,
@@ -351,6 +379,45 @@ enum ToolRunner {
             let end = Double(params["end"] ?? "1") ?? 1
             let out = Naming.output(for: input, ext: ext, suffix: "bleeped")
             try MediaEngine.bleep(input, start: start, end: end, to: out)
+            return [out]
+        case "redactVideo":
+            let rect = CGRect(x: Double(params["x"] ?? "0") ?? 0,
+                              y: Double(params["y"] ?? "0") ?? 0,
+                              width: Double(params["w"] ?? "") ?? Double(info.width) / 2,
+                              height: Double(params["h"] ?? "") ?? Double(info.height) / 2)
+            guard rect.width >= 2, rect.height >= 2 else {
+                throw ZestError("Select a region to redact")
+            }
+            let start = Double(params["start"] ?? "0") ?? 0
+            let end = Double(params["end"] ?? "") ?? info.duration
+            let out = Naming.output(for: input, ext: "mp4", suffix: "redacted")
+            try MediaEngine.redactVideo(input, region: rect, start: start, end: end,
+                                        mode: params["mode"] ?? "blur",
+                                        crf: MediaEngine.crfForPreset(), to: out)
+            return [out]
+        case "redactAudio":
+            let start = Double(params["start"] ?? "0") ?? 0
+            let end = Double(params["end"] ?? "1") ?? 1
+            let out = Naming.output(for: input, ext: ext, suffix: "redacted")
+            try MediaEngine.redactAudio(input, start: start, end: end,
+                                        mode: params["mode"] ?? "tone",
+                                        frequency: Double(params["frequency"] ?? "1000") ?? 1000,
+                                        duration: info.duration,
+                                        keepVideo: info.hasVideo, to: out)
+            return [out]
+        case "audioToVideo":
+            let background = params["background"].flatMap { path -> URL? in
+                let trimmed = path.trimmingCharacters(in: .whitespacesAndNewlines)
+                return trimmed.isEmpty ? nil
+                    : URL(fileURLWithPath: (trimmed as NSString).expandingTildeInPath)
+            }
+            let width = Int(params["width"] ?? "") ?? 1920
+            let height = Int(params["height"] ?? "") ?? 1080
+            let out = Naming.output(for: input, ext: "mp4", suffix: "video")
+            try MediaEngine.audioToVideo(input, background: background,
+                                         color: params["color"] ?? "#1C1C1E",
+                                         width: width, height: height,
+                                         crf: MediaEngine.crfForPreset(), to: out)
             return [out]
         case "channels":
             let mono = (params["mode"] ?? "mono") == "mono"
@@ -512,6 +579,19 @@ enum ToolRunner {
         guard let match = regex.firstMatch(in: xml, range: NSRange(location: 0, length: ns.length)),
               match.numberOfRanges > 1 else { return nil }
         return TextTools.unescapeXML(ns.substring(with: match.range(at: 1)))
+    }
+
+    // MARK: Archives
+
+    private static func runArchive(tool: String, inputs: [URL],
+                                   params: [String: String]) throws -> [URL] {
+        let input = inputs[0]
+        switch tool {
+        case "extract":
+            return [try ArchiveEngine.extract(input)]
+        default:
+            throw ZestError("Unknown archive tool \(tool)")
+        }
     }
 
     // MARK: Subtitles

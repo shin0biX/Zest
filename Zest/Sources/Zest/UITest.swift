@@ -95,6 +95,27 @@ enum UITest {
             }
         }
 
+        harness.check("Wheel: fan style shows one surface and switches") {
+            let wheel = makeWheel(png, mode: .convert)
+            wheel.style = .fan
+            try expect(wheel.rings.count == 1, "fan drew \(wheel.rings.count) rings")
+            try expect(wheel.rings.first?.mode == .convert, "fan did not start on formats")
+            wheel.emphasize(.tools)
+            try expect(wheel.rings.first?.mode == .tools,
+                       "fan did not rebuild for tools")
+            guard let ring = wheel.rings.first else { throw ZestError("fan ring missing") }
+            for (index, choice) in ring.choices.enumerated() {
+                let hit = wheel.choice(at: slicePoint(wheel, ring: ring, index: index))
+                try expect(hit?.id == choice.id,
+                           "fan slice \(index) hit \(hit?.id ?? "nil"), expected \(choice.id)")
+            }
+            wheel.emphasize(.actions)
+            try expect(wheel.rings.first?.mode == .actions,
+                       "fan did not rebuild for actions")
+            wheel.style = .rings
+            try expect(wheel.rings.count == 3, "switching back to rings kept \(wheel.rings.count) rings")
+        }
+
         harness.check("Wheel: hub and outside cancel") {
             let wheel = makeWheel(png, mode: .convert)
             try expect(wheel.choice(at: wheel.center) == nil, "hub returned a choice")
@@ -109,8 +130,7 @@ enum UITest {
                 for ring in wheel.rings {
                     let available = max(46, 2 * ring.mid * sin(ring.step / 2) - 12)
                     for choice in ring.choices {
-                        let font = NSFont.systemFont(ofSize: choice.title.count > 10 ? 10.5 : 11.5,
-                                                     weight: .semibold)
+                        let font = WheelView.labelFont(for: choice, in: ring)
                         let width = (choice.title as NSString)
                             .size(withAttributes: [.font: font]).width
                         try expect(width <= available + 0.5,
@@ -157,6 +177,9 @@ enum UITest {
         }
 
         harness.check("Overlay: opens at the anchor, switches emphasis, keeps every ring") {
+            let previousStyle = Prefs.wheelStyle
+            Prefs.wheelStyle = .rings
+            defer { Prefs.wheelStyle = previousStyle }
             let overlay = OverlayController()
             let screen = NSScreen.main ?? NSScreen.screens[0]
             let anchor = NSPoint(x: screen.frame.midX, y: screen.frame.midY)
@@ -425,6 +448,16 @@ enum UITest {
             }) else { throw ZestError("second collision popup missing") }
             try expect(secondCollision.indexOfSelectedItem == 1, "collision popup ignored replace")
             second.window?.close()
+        }
+
+        harness.check("Settings: every tab and format page builds") {
+            let window = SettingsWindow()
+            window.exerciseForTesting()
+            guard let content = window.window?.contentView else {
+                throw ZestError("settings content disappeared")
+            }
+            try expect(!content.subviews.isEmpty, "settings content is empty")
+            window.window?.close()
         }
 
         harness.check("Services: Convert with Zest opens the wheel") {

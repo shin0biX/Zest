@@ -8,6 +8,8 @@
 	<string>Zest</string>
 	<key>CFBundleExecutable</key>
 	<string>Zest</string>
+	<key>CFBundleIconFile</key>
+	<string>AppIcon</string>
 	<key>CFBundleIdentifier</key>
 	<string>com.zest.app</string>
 	<key>CFBundleInfoDictionaryVersion</key>

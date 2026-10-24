@@ -95,7 +95,7 @@ enum ToolFinder {
                     "/Applications/LibreOffice.app/Contents/MacOS"] {
             candidates.append("\(dir)/\(name)")
         }
-        for path in candidates where FileManager.default.isExecutableFile(atPath: path) {
+        if let path = resolve(name, candidates: candidates) {
             cache[name] = path
             return path
         }
@@ -106,13 +106,57 @@ enum ToolFinder {
            let result = try? Shell.runAllowFailure(shell, ["-lc", "command -v \(name)"]),
            result.0 == 0 {
             let path = result.1.trimmingCharacters(in: .whitespacesAndNewlines)
-            if !path.isEmpty, FileManager.default.isExecutableFile(atPath: path) {
+            if !path.isEmpty, launches(path, name: name) {
                 cache[name] = path
                 return path
             }
         }
         cache[name] = nil
         return nil
+    }
+
+    /// First candidate that is executable **and** starts cleanly. A bundled
+    /// binary can be present but unusable (wrong architecture, broken
+    /// signature, expired build); without this check it would shadow the
+    /// working Homebrew copy.
+    static func resolve(_ name: String, candidates: [String]) -> String? {
+        for path in candidates where FileManager.default.isExecutableFile(atPath: path) {
+            if launches(path, name: name) { return path }
+        }
+        return nil
+    }
+
+    /// Runs the tool's version flag with a short timeout. Cached by `find`.
+    static func launches(_ path: String, name: String) -> Bool {
+        let arguments: [String]
+        switch name {
+        case "ffmpeg", "ffprobe", "cwebp": arguments = ["-version"]
+        case "pandoc": arguments = ["--version"]
+        case "exiftool": arguments = ["-ver"]
+        case "soffice": arguments = ["--version"]
+        default: arguments = ["-version"]
+        }
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: path)
+        process.arguments = arguments
+        process.standardOutput = FileHandle.nullDevice
+        process.standardError = FileHandle.nullDevice
+        process.standardInput = FileHandle.nullDevice
+        var env = ProcessInfo.processInfo.environment
+        env["PATH"] = "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
+        process.environment = env
+        do { try process.run() } catch { return false }
+        let deadline = Date().addingTimeInterval(2)
+        while process.isRunning, Date() < deadline {
+            usleep(20_000)
+        }
+        if process.isRunning {
+            process.terminate()
+            process.waitUntilExit()
+            return false
+        }
+        process.waitUntilExit()
+        return process.terminationStatus == 0
     }
 
     static func invalidate() {
@@ -203,6 +247,22 @@ enum KindDetector {
 }
 
 // MARK: - Output naming
+
+enum AppIcon {
+    /// The icon declared by the bundle. Headless runs execute outside a
+    /// bundle, so fall back to the repository copy before the generic file
+    /// icon, which keeps `settings-preview` honest.
+    static var image: NSImage {
+        if let url = Bundle.main.url(forResource: "AppIcon", withExtension: "icns"),
+           let image = NSImage(contentsOf: url) {
+            return image
+        }
+        let local = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
+            .appendingPathComponent("Resources/AppIcon.icns")
+        if let image = NSImage(contentsOf: local) { return image }
+        return NSWorkspace.shared.icon(forFile: Bundle.main.bundlePath)
+    }
+}
 
 enum Naming {
     static func output(for input: URL, ext: String, suffix: String? = nil, directory: URL? = nil) -> URL {

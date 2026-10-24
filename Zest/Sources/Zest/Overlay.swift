@@ -38,7 +38,7 @@ final class OverlayController {
         let local = wheel.convert(inWindow, from: nil)
         let dx = local.x - wheel.center.x
         let dy = local.y - wheel.center.y
-        return hypot(dx, dy) <= wheel.outerRadius
+        return hypot(dx, dy) <= wheel.discRadius
     }
 
     /// Called shortly after the mouse button is released. A release outside
@@ -105,15 +105,19 @@ final class OverlayController {
 
         let wheel = WheelView(frame: NSRect(origin: .zero, size: screen.frame.size))
         wheel.autoresizingMask = [.width, .height]
+        wheel.style = Prefs.wheelStyle
         wheel.surfaces = Catalog.surfaces(for: context.urls)
         wheel.emphasize(mode)
         wheel.count = context.urls.count
         wheel.kind = context.kind
+        wheel.totalBytes = context.urls.reduce(0) { sum, url in
+            sum + (url.isDirectory ? 0 : url.fileSize)
+        }
         wheel.demo = demoMode
 
         var center = NSPoint(x: context.anchor.x - screen.frame.minX,
                              y: context.anchor.y - screen.frame.minY)
-        let margin: CGFloat = wheel.outerRadius + 14
+        let margin: CGFloat = wheel.discRadius + 14
         center.x = min(max(center.x, min(margin, screen.frame.width / 2)),
                        max(screen.frame.width - margin, screen.frame.width / 2))
         center.y = min(max(center.y, min(margin, screen.frame.height / 2)),
@@ -166,7 +170,7 @@ final class OverlayController {
         Log.write("Wheel mode=\(wheel.emphasis.rawValue) count=\(ring?.choices.count ?? 0) "
             + "anchor=\(Int(anchor.x)),\(Int(anchor.y)) "
             + "screen=\(Int(screen.frame.width))x\(Int(screen.frame.height)) "
-            + "radius=\(Int(ring?.mid ?? 0)) outer=\(Int(WheelView.outerRadius)) "
+            + "radius=\(Int(ring?.mid ?? 0)) outer=\(Int(wheel.discRadius)) "
             + "rings=\(rings) choices=\(ids)")
     }
 
@@ -240,13 +244,15 @@ struct WheelRing {
 }
 
 final class WheelView: NSView {
-    /// Radii in points. The outer disc is large enough to hold three labelled
-    /// rings (formats, tools, actions) at once.
-    static let outerRadius: CGFloat = 340
-    static let hubRadius: CGFloat = 84
+    /// Radii in points. The fan is the default surface: 496 pt across at
+    /// native scale, which leaves the desktop visible around it. Rings are
+    /// slightly wider because three labelled surfaces share the disc.
+    static let outerRadius: CGFloat = 288
+    static let hubRadius: CGFloat = 72
 
     var outerRadius: CGFloat { Self.outerRadius }
     var innerRadius: CGFloat { Self.hubRadius }
+    var discRadius: CGFloat { style == .fan ? fanOuter : Self.outerRadius }
 
     /// Outermost first. Assigned by the controller from `Catalog.surfaces`.
     var surfaces: [(mode: WheelMode, choices: [WheelChoice])] = [] {
@@ -259,8 +265,32 @@ final class WheelView: NSView {
     private(set) var emphasis: WheelMode = .convert
     var count: Int = 1
     var kind: Kind?
+    var totalBytes: Int64 = 0
     var demo = false
+    var preview = false
     var showBackdrop = true
+
+    /// Fan geometry scale. The overlay uses 1; the welcome preview shrinks the
+    /// same drawing to fit a 370-point card without a second renderer.
+    var fanScale: CGFloat = 1 {
+        didSet {
+            guard oldValue != fanScale else { return }
+            rebuildRings()
+        }
+    }
+    private var fanOuter: CGFloat { Self.fanOuterRadius * fanScale }
+    private var fanInner: CGFloat { Self.fanInnerRadius * fanScale }
+    private var fanAccent: NSColor { .systemOrange }
+
+    /// Rings keeps all three surfaces visible. Fan is the Tangerine-style
+    /// single-surface layout; emphasis picks which surface the fan shows.
+    var style: WheelStyle = .rings {
+        didSet {
+            guard oldValue != style else { return }
+            hovered = nil
+            rebuildRings()
+        }
+    }
     var hovered: WheelHit? {
         didSet { if oldValue != hovered { needsDisplay = true } }
     }
@@ -293,6 +323,14 @@ final class WheelView: NSView {
     func ring(for mode: WheelMode) -> WheelRing? { rings.first { $0.mode == mode } }
 
     func emphasize(_ mode: WheelMode) {
+        if style == .fan {
+            let available = surfaces.filter { !$0.choices.isEmpty }
+            emphasis = available.contains { $0.mode == mode }
+                ? mode : (available.first?.mode ?? mode)
+            hovered = nil
+            rebuildRings()
+            return
+        }
         emphasis = rings.contains { $0.mode == mode } ? mode : (rings.first?.mode ?? mode)
         needsDisplay = true
     }
@@ -304,6 +342,17 @@ final class WheelView: NSView {
             needsDisplay = true
             return
         }
+
+        if style == .fan {
+            let surface = active.first { $0.mode == emphasis } ?? active[0]
+            emphasis = surface.mode
+            rings = [WheelRing(mode: surface.mode, choices: surface.choices,
+                               inner: fanInner, outer: fanOuter)]
+            hovered = nil
+            needsDisplay = true
+            return
+        }
+
         let width = (Self.outerRadius - Self.hubRadius) / CGFloat(active.count)
         rings = active.enumerated().map { index, surface in
             let outer = Self.outerRadius - CGFloat(index) * width
@@ -315,6 +364,25 @@ final class WheelView: NSView {
         }
         if let hovered, hovered.ring >= rings.count { self.hovered = nil }
         needsDisplay = true
+    }
+
+    static let fanInnerRadius: CGFloat = 112
+    static let fanOuterRadius: CGFloat = 248
+
+    /// Ring labels share one font size per ring. Pick the largest size whose
+    /// longest title still fits the wedge chord, so shrinking the wheel never
+    /// silently truncates a tool name. The UI fit test measures this same font.
+    static func labelFont(for choice: WheelChoice, in ring: WheelRing) -> NSFont {
+        let available = max(46, 2 * ring.mid * sin(ring.step / 2) - 12)
+        let sizes: [CGFloat] = [11.5, 11, 10.5, 10, 9.5, 9, 8.5]
+        for size in sizes {
+            let font = NSFont.systemFont(ofSize: size, weight: .semibold)
+            let widest = ring.choices.map {
+                ($0.title as NSString).size(withAttributes: [.font: font]).width
+            }.max() ?? 0
+            if widest <= available { return font }
+        }
+        return .systemFont(ofSize: 8.5, weight: .semibold)
     }
 
     override var isFlipped: Bool { false }
@@ -374,8 +442,9 @@ final class WheelView: NSView {
     /// The outer arc runs counter-clockwise from the lower angle to the higher
     /// one; the inner arc runs back clockwise. Running either arc the long way
     /// round paints the whole annulus and buries every other slice.
-    private func wedgePath(ring: WheelRing, index: Int, inset: CGFloat = 0) -> NSBezierPath {
-        let gap = min(0.016, ring.step * 0.10)
+    private func wedgePath(ring: WheelRing, index: Int, inset: CGFloat = 0,
+                           gapOverride: CGFloat? = nil) -> NSBezierPath {
+        let gap = gapOverride ?? min(0.016, ring.step * 0.10)
         let a0 = ring.startAngle - CGFloat(index + 1) * ring.step + gap / 2
         let a1 = ring.startAngle - CGFloat(index) * ring.step - gap / 2
         let rOut = ring.outer - 3 - inset
@@ -393,12 +462,63 @@ final class WheelView: NSView {
         return path
     }
 
+    /// Rounded petal used by the fan layout. The four corners are quadratic
+    /// joins so the outer and inner edges read as petals rather than pie cuts.
+    private func fanPetalPath(ring: WheelRing, index: Int, gap: CGFloat,
+                              corner: CGFloat) -> NSBezierPath {
+        let a0 = ring.startAngle - CGFloat(index + 1) * ring.step + gap / 2
+        let a1 = ring.startAngle - CGFloat(index) * ring.step - gap / 2
+        let rOut = ring.outer - 2
+        let rIn = ring.inner + 2
+        guard a1 > a0, rOut > rIn else {
+            return wedgePath(ring: ring, index: index, gapOverride: gap)
+        }
+
+        let maxCorner = min((rOut - rIn) / 3, rOut * (a1 - a0) / 3)
+        let radius = max(1, min(corner, maxCorner))
+        let dOut = min((a1 - a0) / 4, radius / rOut)
+        let dIn = min((a1 - a0) / 4, radius / rIn)
+        func point(_ r: CGFloat, _ a: CGFloat) -> CGPoint {
+            CGPoint(x: center.x + cos(a) * r, y: center.y + sin(a) * r)
+        }
+
+        let path = NSBezierPath()
+        func addQuad(to end: NSPoint, control: NSPoint) {
+            let start = path.currentPoint
+            let c1 = NSPoint(x: start.x + (control.x - start.x) * 2 / 3,
+                             y: start.y + (control.y - start.y) * 2 / 3)
+            let c2 = NSPoint(x: end.x + (control.x - end.x) * 2 / 3,
+                             y: end.y + (control.y - end.y) * 2 / 3)
+            path.curve(to: end, controlPoint1: c1, controlPoint2: c2)
+        }
+
+        path.move(to: point(rOut, a0 + dOut))
+        path.appendArc(withCenter: center, radius: rOut,
+                       startAngle: (a0 + dOut) * 180 / .pi,
+                       endAngle: (a1 - dOut) * 180 / .pi,
+                       clockwise: false)
+        addQuad(to: point(rOut - radius, a1), control: point(rOut, a1))
+        path.line(to: point(rIn + radius, a1))
+        addQuad(to: point(rIn, a1 - dIn), control: point(rIn, a1))
+        path.appendArc(withCenter: center, radius: rIn,
+                       startAngle: (a1 - dIn) * 180 / .pi,
+                       endAngle: (a0 + dIn) * 180 / .pi,
+                       clockwise: true)
+        addQuad(to: point(rIn + radius, a0), control: point(rIn, a0))
+        path.line(to: point(rOut - radius, a0))
+        addQuad(to: point(rOut, a0 + dOut), control: point(rOut, a0))
+        path.close()
+        return path
+    }
+
     func hit(at point: NSPoint) -> WheelHit? {
         guard !rings.isEmpty else { return nil }
         let dx = point.x - center.x
         let dy = point.y - center.y
         let r = hypot(dx, dy)
-        guard r >= Self.hubRadius, r <= Self.outerRadius,
+        let minRadius = style == .fan ? fanInner : Self.hubRadius
+        let maxRadius = style == .fan ? fanOuter : Self.outerRadius
+        guard r >= minRadius, r <= maxRadius,
               let ringIndex = rings.firstIndex(where: { r >= $0.inner - 0.5 && r <= $0.outer + 0.5 })
         else { return nil }
         let ring = rings[ringIndex]
@@ -448,20 +568,34 @@ final class WheelView: NSView {
 
         if showBackdrop { drawBackdrop(ctx) }
         guard !rings.isEmpty else { return }
-        drawRings()
-        drawHub()
+        if style == .fan {
+            drawFan()
+        } else {
+            drawRings()
+            drawHub()
+        }
     }
 
     private func drawBackdrop(_ ctx: CGContext) {
-        let glowRect = NSRect(x: center.x - outerRadius - 26,
-                              y: center.y - outerRadius - 26,
-                              width: (outerRadius + 26) * 2,
-                              height: (outerRadius + 26) * 2)
-        let gradient = NSGradient(colors: [
-            NSColor(calibratedWhite: 0, alpha: 0.30),
-            NSColor(calibratedWhite: 0, alpha: 0.0)
-        ])!
-        gradient.draw(in: NSBezierPath(ovalIn: glowRect), relativeCenterPosition: .zero)
+        // Tangerine-style plate: a single dark rounded square behind the
+        // wheel instead of a translucent glow. It keeps every label legible
+        // on bright wallpapers and reads as one deliberate surface.
+        let radius = discRadius + 34
+        let rect = NSRect(x: center.x - radius, y: center.y - radius,
+                          width: radius * 2, height: radius * 2)
+        let path = NSBezierPath(roundedRect: rect, xRadius: 34, yRadius: 34)
+        let shadow = NSShadow()
+        shadow.shadowColor = NSColor(calibratedWhite: 0, alpha: 0.35)
+        shadow.shadowBlurRadius = 26
+        shadow.shadowOffset = NSSize(width: 0, height: -6)
+        NSGraphicsContext.saveGraphicsState()
+        shadow.set()
+        NSColor(calibratedWhite: 0.105, alpha: 0.96).setFill()
+        path.fill()
+        NSGraphicsContext.restoreGraphicsState()
+        NSColor(calibratedWhite: 1, alpha: 0.06).setStroke()
+        path.lineWidth = 1
+        path.stroke()
         _ = ctx
     }
 
@@ -505,6 +639,157 @@ final class WheelView: NSView {
         rim.stroke()
     }
 
+    // MARK: Fan wheel
+
+    /// Tangerine-style fan: one surface, eight-ish rounded petals, the file
+    /// size in the hub. The three-ring layout stays available in Settings and
+    /// is still the default for `WheelView` so the headless geometry tests can
+    /// exercise every ring without touching preferences.
+    private func drawFan() {
+        guard let ring = rings.first else { return }
+        let accent = fanAccent
+        let corner = 16 * max(0.70, fanScale)
+
+        for (index, choice) in ring.choices.enumerated() {
+            let hover = hovered == WheelHit(ring: 0, index: index)
+            let gap = hover
+                ? min(0.040, ring.step * 0.13)
+                : min(0.058, ring.step * 0.18)
+            let path = fanPetalPath(ring: ring, index: index, gap: gap, corner: corner)
+
+            if hover {
+                accent.withAlphaComponent(0.22).setStroke()
+                path.lineWidth = 8
+                path.stroke()
+            }
+
+            NSGraphicsContext.saveGraphicsState()
+            path.addClip()
+            let gradient: NSGradient?
+            if hover {
+                gradient = NSGradient(colors: [
+                    accent.blended(withFraction: 0.10, of: .white) ?? accent,
+                    accent.blended(withFraction: 0.22, of: .black) ?? accent
+                ])
+            } else {
+                gradient = NSGradient(colors: [
+                    NSColor(calibratedWhite: 0.245, alpha: 1),
+                    NSColor(calibratedWhite: 0.190, alpha: 1)
+                ])
+            }
+            gradient?.draw(in: path.bounds, angle: 90)
+            NSGraphicsContext.restoreGraphicsState()
+
+            (hover
+                ? NSColor(calibratedWhite: 1, alpha: 0.34)
+                : NSColor(calibratedWhite: 1, alpha: 0.055)).setStroke()
+            path.lineWidth = 1
+            path.stroke()
+
+            drawFanContent(choice, ring: ring, index: index, hover: hover)
+        }
+
+        drawFanHub(ring)
+    }
+
+    private func drawFanContent(_ choice: WheelChoice, ring: WheelRing,
+                                index: Int, hover: Bool) {
+        let angle = ring.midAngle(index)
+        let artScale = max(0.70, fanScale)
+        let isFormat: Bool
+        if case .format = choice.payload { isFormat = true } else { isFormat = false }
+
+        // Tangerine's hub is just the file size; the petals carry the labels.
+        // Formats sit on the petal's midline. Tools and actions stack a white
+        // glyph and label vertically at that same anchor, so side petals do
+        // not push their icon outboard of the text.
+        let contentRadius = (ring.inner + ring.outer) / 2
+        let anchor = NSPoint(x: center.x + cos(angle) * contentRadius,
+                             y: center.y + sin(angle) * contentRadius)
+
+        if !isFormat {
+            let iconPoint = NSPoint(x: anchor.x, y: anchor.y + 12 * artScale)
+            let iconSize = (hover ? 23.0 : 21.0) * artScale
+            if let image = symbol(choice.symbol, pointSize: iconSize,
+                                  color: hover ? .white
+                                               : NSColor(calibratedWhite: 1, alpha: 0.86)) {
+                let size = image.size
+                image.draw(in: NSRect(x: iconPoint.x - size.width / 2,
+                                      y: iconPoint.y - size.height / 2,
+                                      width: size.width, height: size.height))
+            }
+        }
+
+        let labelPoint = isFormat ? anchor
+            : NSPoint(x: anchor.x, y: anchor.y - 7 * artScale)
+        let step = ring.step
+        let available = max(34, 2 * contentRadius * sin(step / 2) - 4)
+        let base: CGFloat
+        if isFormat {
+            base = ring.choices.count > 10 ? 11.5 : 13
+        } else {
+            base = ring.choices.count > 12 ? 9.5 : (ring.choices.count > 9 ? 10.5 : 11.5)
+        }
+        let fontSize = max(7, base * artScale)
+        let para = NSMutableParagraphStyle()
+        para.alignment = .center
+        para.lineBreakMode = .byWordWrapping
+        let attrs: [NSAttributedString.Key: Any] = [
+            .font: NSFont.systemFont(ofSize: fontSize, weight: .bold),
+            .foregroundColor: hover ? NSColor.white : NSColor(calibratedWhite: 1, alpha: 0.95),
+            .paragraphStyle: para,
+            .kern: 0.35
+        ]
+        let text = choice.title.uppercased() as NSString
+        var box = text.boundingRect(
+            with: NSSize(width: available, height: 40),
+            options: [.usesLineFragmentOrigin],
+            attributes: attrs)
+        box.origin = .zero
+        box = box.integral
+        text.draw(with: NSRect(x: labelPoint.x - available / 2,
+                              y: labelPoint.y - box.height / 2,
+                              width: available, height: max(box.height, 12)),
+                  options: [.usesLineFragmentOrigin],
+                  attributes: attrs)
+    }
+
+    private func drawFanHub(_ ring: WheelRing) {
+        let hubRect = NSRect(x: center.x - fanInner,
+                             y: center.y - fanInner,
+                             width: fanInner * 2,
+                             height: fanInner * 2)
+        let circle = NSBezierPath(ovalIn: hubRect)
+        NSColor(calibratedWhite: 0.045, alpha: 0.98).setFill()
+        circle.fill()
+        NSColor(calibratedWhite: 1, alpha: 0.045).setStroke()
+        circle.lineWidth = 1
+        circle.stroke()
+
+        let para = NSMutableParagraphStyle()
+        para.alignment = .center
+        para.lineBreakMode = .byTruncatingMiddle
+
+        let s = max(0.55, fanScale)
+        let main: String
+        if totalBytes > 0 {
+            main = Bytes.format(totalBytes)
+        } else if count == 1 {
+            main = "1 FILE"
+        } else {
+            main = "\(count) FILES"
+        }
+        let size: CGFloat = main.count > 10 ? 14 : (main.count > 7 ? 16 : 18)
+        (main as NSString).draw(
+            in: NSRect(x: center.x - fanInner + 8,
+                       y: center.y - (size * s) / 2 + 1,
+                       width: fanInner * 2 - 16,
+                       height: size * s + 6),
+            withAttributes: [.font: NSFont.systemFont(ofSize: size * s, weight: .semibold),
+                             .foregroundColor: NSColor(calibratedWhite: 1, alpha: 0.96),
+                             .paragraphStyle: para])
+    }
+
     private func drawContent(_ choice: WheelChoice, ring: WheelRing,
                              index: Int, hover: Bool) {
         let angle = ring.midAngle(index)
@@ -525,8 +810,7 @@ final class WheelView: NSView {
             }
         }
 
-        let font = NSFont.systemFont(ofSize: choice.title.count > 10 ? 10.5 : 11.5,
-                                     weight: .semibold)
+        let font = Self.labelFont(for: choice, in: ring)
         let para = NSMutableParagraphStyle()
         para.alignment = .center
         para.lineBreakMode = .byTruncatingTail
@@ -580,7 +864,7 @@ final class WheelView: NSView {
         circle.lineWidth = 1.5
         circle.stroke()
 
-        let cancelHighlight = hovered == nil && !demo
+        let cancelHighlight = hovered == nil && !demo && !preview
         let title = cancelHighlight ? "CANCEL" : activeMode.title.uppercased()
         let titleColor = cancelHighlight
             ? NSColor(calibratedRed: 1, green: 0.42, blue: 0.38, alpha: 1)
@@ -604,7 +888,8 @@ final class WheelView: NSView {
                              .foregroundColor: NSColor(calibratedWhite: 1, alpha: 0.92),
                              .paragraphStyle: para])
 
-        let hint = demo ? "Click to pick" : (hovered == nil ? "Release to cancel" : "Release to apply")
+        let hint = preview ? "Hover to explore"
+            : (demo ? "Click to pick" : (hovered == nil ? "Release to cancel" : "Release to apply"))
         (hint as NSString).draw(
             in: NSRect(x: center.x - 74, y: center.y - 18, width: 148, height: 14),
             withAttributes: [.font: NSFont.systemFont(ofSize: 10, weight: .regular),

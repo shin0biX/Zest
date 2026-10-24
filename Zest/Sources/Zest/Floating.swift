@@ -9,13 +9,31 @@ final class FloatingFiles {
     static let shared = FloatingFiles()
 
     private var panels: [NSPanel] = []
+    private var lastURLs: [URL] = []
     private var cascade: CGFloat = 0
 
     static func show(_ urls: [URL]) {
-        onMain { shared.present(urls) }
+        onMain { shared.present(urls, behavior: Prefs.floatBehavior) }
     }
 
-    private func present(_ urls: [URL]) {
+    private func present(_ urls: [URL], behavior: FloatBehavior) {
+        guard !urls.isEmpty else { return }
+
+        var incoming = urls
+        if behavior == .addToExisting, let current = panels.last {
+            // Re-present the active Float with the union, keeping one panel.
+            let existing = Set(lastURLs.map(\.path))
+            incoming = lastURLs + urls.filter { !existing.contains($0.path) }
+            dismiss(current)
+        }
+        incoming = incoming.reduce(into: []) { result, url in
+            if !result.contains(where: { $0.path == url.path }) { result.append(url) }
+        }
+        lastURLs = incoming
+        build(incoming)
+    }
+
+    private func build(_ urls: [URL]) {
         guard !urls.isEmpty else { return }
 
         let width: CGFloat = 304
@@ -87,6 +105,7 @@ final class FloatingFiles {
             row.autoresizingMask = [.width]
             row.onClose = { [weak self, weak row, weak panel] in
                 guard let self, let row else { return }
+                self.lastURLs.removeAll { $0.path == url.path }
                 row.removeFromSuperview()
                 self.reflow(document, rowHeight: rowHeight)
                 if document.subviews.isEmpty, let panel {
@@ -132,7 +151,10 @@ final class FloatingFiles {
         panel.orderOut(nil)
         panel.close()
         panels.removeAll { $0 === panel }
-        if panels.isEmpty { cascade = 0 }
+        if panels.isEmpty {
+            cascade = 0
+            lastURLs = []
+        }
     }
 }
 

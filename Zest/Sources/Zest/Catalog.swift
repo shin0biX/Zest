@@ -173,6 +173,7 @@ enum Catalog {
         ToolDef(id: "targetSize", title: "Exact Size", symbol: "arrow.down.to.line", hint: "Hit a byte target"),
         ToolDef(id: "resize", title: "Resize", symbol: "arrow.up.left.and.arrow.down.right", hint: "Change dimensions"),
         ToolDef(id: "crop", title: "Crop", symbol: "crop", hint: "Trim edges"),
+        ToolDef(id: "frame", title: "Add BG", symbol: "rectangle.inset.filled", hint: "Frame on a background"),
         ToolDef(id: "rotate", title: "Rotate", symbol: "rotate.right", hint: "Turn the image"),
         ToolDef(id: "flip", title: "Flip", symbol: "arrow.left.arrow.right", hint: "Mirror"),
         ToolDef(id: "adjust", title: "Adjust", symbol: "slider.horizontal.3", hint: "Light and color"),
@@ -180,7 +181,7 @@ enum Catalog {
         ToolDef(id: "annotate", title: "Annotate", symbol: "pencil.tip", hint: "Draw on the photo"),
         ToolDef(id: "redact", title: "Redact", symbol: "eye.slash", hint: "Cover sensitive areas"),
         ToolDef(id: "metadata", title: "Metadata", symbol: "info.circle", hint: "Inspect and edit"),
-        ToolDef(id: "strip", title: "Strip Metadata", symbol: "eraser", hint: "Remove all tags"),
+        ToolDef(id: "strip", title: "Strip Tags", symbol: "eraser", hint: "Remove all metadata"),
         ToolDef(id: "collage", title: "Collage", symbol: "rectangle.3.group", hint: "Combine photos"),
         ToolDef(id: "qr", title: "Read QR", symbol: "qrcode.viewfinder", hint: "Decode barcodes")
     ]
@@ -195,11 +196,13 @@ enum Catalog {
         ToolDef(id: "crop", title: "Crop", symbol: "crop", hint: "Cut the frame"),
         ToolDef(id: "rotate", title: "Rotate", symbol: "rotate.right", hint: "Turn the frame"),
         ToolDef(id: "snapshot", title: "Snapshot", symbol: "camera", hint: "Grab one frame"),
+        ToolDef(id: "snapshots", title: "Snapshots", symbol: "camera.viewfinder", hint: "Grab several frames"),
         ToolDef(id: "gif", title: "Make GIF", symbol: "photo.stack", hint: "Loop a clip"),
         ToolDef(id: "mute", title: "Mute", symbol: "speaker.slash", hint: "Remove audio"),
+        ToolDef(id: "redactVideo", title: "Redact", symbol: "eye.slash", hint: "Hide a region over time"),
         ToolDef(id: "extractAudio", title: "Extract Audio", symbol: "music.note", hint: "Rip the soundtrack"),
         ToolDef(id: "metadata", title: "Metadata", symbol: "info.circle", hint: "Inspect and edit"),
-        ToolDef(id: "strip", title: "Strip Metadata", symbol: "eraser", hint: "Remove all tags")
+        ToolDef(id: "strip", title: "Strip Tags", symbol: "eraser", hint: "Remove all tags")
     ]
 
     static let audioTools: [ToolDef] = [
@@ -210,11 +213,13 @@ enum Catalog {
         ToolDef(id: "join", title: "Join", symbol: "link", hint: "Merge tracks"),
         ToolDef(id: "normalize", title: "Normalize", symbol: "waveform", hint: "Even out loudness"),
         ToolDef(id: "bleep", title: "Bleep", symbol: "speaker.slash", hint: "Silence a range"),
+        ToolDef(id: "redactAudio", title: "Redact", symbol: "eye.slash", hint: "Tone out a range"),
+        ToolDef(id: "audioToVideo", title: "To Video", symbol: "film", hint: "Pair with a still"),
         ToolDef(id: "channels", title: "Channels", symbol: "speaker.wave.2", hint: "Mono or stereo"),
         ToolDef(id: "sampleRate", title: "Sample Rate", symbol: "metronome", hint: "Resample"),
         ToolDef(id: "speed", title: "Speed", symbol: "speedometer", hint: "Slow or fast"),
         ToolDef(id: "metadata", title: "Metadata", symbol: "info.circle", hint: "Inspect and edit"),
-        ToolDef(id: "strip", title: "Strip Metadata", symbol: "eraser", hint: "Remove all tags")
+        ToolDef(id: "strip", title: "Strip Tags", symbol: "eraser", hint: "Remove all tags")
     ]
 
     static let pdfTools: [ToolDef] = [
@@ -226,18 +231,22 @@ enum Catalog {
         ToolDef(id: "rotate", title: "Rotate", symbol: "rotate.right", hint: "Turn pages"),
         ToolDef(id: "extractImages", title: "Extract Images", symbol: "photo.stack", hint: "Pull page images"),
         ToolDef(id: "metadata", title: "Metadata", symbol: "info.circle", hint: "Inspect and edit"),
-        ToolDef(id: "strip", title: "Strip Metadata", symbol: "eraser", hint: "Remove all tags"),
+        ToolDef(id: "strip", title: "Strip Tags", symbol: "eraser", hint: "Remove all tags"),
         ToolDef(id: "qr", title: "Read QR", symbol: "qrcode.viewfinder", hint: "Decode barcodes")
+    ]
+
+    static let archiveTools: [ToolDef] = [
+        ToolDef(id: "extract", title: "Extract", symbol: "archivebox", hint: "Unpack beside the archive")
     ]
 
     static let docTools: [ToolDef] = [
         ToolDef(id: "metadata", title: "Metadata", symbol: "info.circle", hint: "Inspect and edit"),
-        ToolDef(id: "strip", title: "Strip Metadata", symbol: "eraser", hint: "Remove all tags")
+        ToolDef(id: "strip", title: "Strip Tags", symbol: "eraser", hint: "Remove all tags")
     ]
 
     static let sheetTools: [ToolDef] = [
         ToolDef(id: "metadata", title: "Metadata", symbol: "info.circle", hint: "Inspect and edit"),
-        ToolDef(id: "strip", title: "Strip Metadata", symbol: "eraser", hint: "Remove all tags")
+        ToolDef(id: "strip", title: "Strip Tags", symbol: "eraser", hint: "Remove all tags")
     ]
 
     static let subtitleTools: [ToolDef] = [
@@ -255,7 +264,7 @@ enum Catalog {
         case .slides: return docTools
         case .sheet: return sheetTools
         case .subtitle: return subtitleTools
-        case .archive: return []
+        case .archive: return archiveTools
         case .folder, .other: return []
         }
     }
@@ -337,7 +346,7 @@ enum Catalog {
     }
 
     static var toolCount: Int {
-        let kinds: [Kind] = [.image, .video, .audio, .pdf, .document, .slides, .sheet, .subtitle]
+        let kinds: [Kind] = [.image, .video, .audio, .pdf, .document, .slides, .sheet, .subtitle, .archive]
         return kinds.reduce(0) { $0 + tools(for: $1).count }
     }
 }

@@ -132,6 +132,23 @@ enum ToolUI {
                             Field(id: "fit", label: "Mode", kind: .popup(
                                 [("Fit inside", "fit"), ("Fill and crop", "fill"), ("Stretch", "stretch")], 0))
                         ])
+        case "frame":
+            return form(title: "Add background",
+                        message: "Pad the photo on a coloured card. Ratios crop the canvas, never the photo.",
+                        fields: [
+                            Field(id: "padding", label: "Padding %", kind: .text("10", "0–30")),
+                            Field(id: "ratio", label: "Canvas", kind: .popup(
+                                [("Original", "original"), ("Square", "square"),
+                                 ("4:3", "4:3"), ("16:9", "16:9"),
+                                 ("9:16", "9:16"), ("3:2", "3:2")], 0)),
+                            Field(id: "background", label: "Background", kind: .text("#FFFFFF", "#RRGGBB")),
+                            Field(id: "radius", label: "Corner %", kind: .text("4", "0 = square")),
+                            Field(id: "border", label: "Border px", kind: .text("0", nil)),
+                            Field(id: "shadow", label: "Shadow", kind: .popup(
+                                [("None", "none"), ("Soft", "soft"), ("Strong", "strong")], 0)),
+                            Field(id: "format", label: "Output", kind: .popup(
+                                [("PNG", "png"), ("JPG", "jpg")], 0))
+                        ])
         case "crop":
             if kind == .image {
                 guard let rect = cropEditor(input) else { return nil }
@@ -206,6 +223,15 @@ enum ToolUI {
                             Field(id: "format", label: "Format", kind: .popup(
                                 [("PNG", "png"), ("JPG", "jpg")], 0))
                         ])
+        case "snapshots":
+            return form(title: "Grab several frames",
+                        message: "Duration is \(String(format: "%.2f", info.duration)) s. Leave times empty to space the count evenly.",
+                        fields: [
+                            Field(id: "times", label: "Times (s)", kind: .text("", "0,1,2")),
+                            Field(id: "count", label: "Even count", kind: .text("6", nil)),
+                            Field(id: "format", label: "Format", kind: .popup(
+                                [("PNG", "png"), ("JPG", "jpg")], 0))
+                        ])
         case "gif":
             return form(title: "Make GIF", message: "",
                         fields: [
@@ -234,6 +260,58 @@ enum ToolUI {
                         fields: [Field(id: "rate", label: "Rate", kind: .popup(
                             [("44.1 kHz", "44100"), ("48 kHz", "48000"),
                              ("22.05 kHz", "22050"), ("96 kHz", "96000")], 0))])
+        case "redactVideo":
+            guard let frame = videoFrame(input, info: info),
+                  let box = rectEditor(image: frame,
+                                       title: "Redact \(input.lastPathComponent)",
+                                       actionTitle: "Redact") else { return nil }
+            let parts = box.split(separator: ",").compactMap { Double($0) }
+            guard parts.count == 4 else { return nil }
+            let pixels = CGRect(x: parts[0] * Double(info.width),
+                                y: parts[1] * Double(info.height),
+                                width: parts[2] * Double(info.width),
+                                height: parts[3] * Double(info.height))
+            guard let values = form(
+                title: "Redact region",
+                message: "The box covers \(Int(pixels.width))×\(Int(pixels.height)) px. Pick the time range and the treatment.",
+                fields: [
+                    Field(id: "start", label: "From (s)", kind: .text("0", nil)),
+                    Field(id: "end", label: "To (s)",
+                          kind: .text(String(format: "%.2f", info.duration), nil)),
+                    Field(id: "mode", label: "Treatment", kind: .popup(
+                        [("Blur", "blur"), ("Pixelate", "pixelate"), ("Black box", "box")], 0))
+                ]) else { return nil }
+            var params = values
+            params["x"] = "\(Int(pixels.minX.rounded()))"
+            params["y"] = "\(Int(pixels.minY.rounded()))"
+            params["w"] = "\(Int(pixels.width.rounded()))"
+            params["h"] = "\(Int(pixels.height.rounded()))"
+            return params
+        case "redactAudio":
+            return form(title: "Redact audio",
+                        message: "Duration is \(String(format: "%.2f", info.duration)) s. A tone keeps the rhythm; silence removes it.",
+                        fields: [
+                            Field(id: "start", label: "From (s)", kind: .text("0", nil)),
+                            Field(id: "end", label: "To (s)", kind: .text("1", nil)),
+                            Field(id: "mode", label: "Replace with", kind: .popup(
+                                [("Tone", "tone"), ("Silence", "silence")], 0)),
+                            Field(id: "frequency", label: "Tone (Hz)", kind: .text("1000", nil))
+                        ])
+        case "audioToVideo":
+            guard var values = form(
+                title: "Audio to video",
+                message: "Pairs the track with a still image, or a solid colour when the path is blank.",
+                fields: [
+                    Field(id: "background", label: "Image path", kind: .text("", "optional, e.g. ~/cover.jpg")),
+                    Field(id: "color", label: "Background", kind: .text("#1C1C1E", "#RRGGBB")),
+                    Field(id: "size", label: "Frame", kind: .popup(
+                        [("1080p", "1920x1080"), ("720p", "1280x720"),
+                         ("Square", "1080x1080"), ("Vertical", "1080x1920")], 0))
+                ]) else { return nil }
+            let size = (values["size"] ?? "1920x1080").split(separator: "x")
+            values["width"] = size.first.map(String.init) ?? "1920"
+            values["height"] = size.count > 1 ? String(size[1]) : "1080"
+            return values
         case "reorder":
             return form(title: "Reorganize pages",
                         message: "Enter the new order, for example 3,1,2,5-7.",
@@ -263,9 +341,17 @@ enum ToolUI {
             Alert.show("Can't open image", detail: input.lastPathComponent)
             return nil
         }
+        return rectEditor(image: image,
+                          title: "Crop \(input.lastPathComponent)",
+                          actionTitle: "Crop")
+    }
+
+    /// Shared rectangle picker: returns a normalized `x,y,w,h` string with a
+    /// top-left origin. Used by Crop and by the video redaction tool.
+    static func rectEditor(image: CGImage, title: String, actionTitle: String) -> String? {
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 860, height: 640),
                               styleMask: [.titled, .closable], backing: .buffered, defer: false)
-        window.title = "Crop \(input.lastPathComponent)"
+        window.title = title
         window.center()
 
         let canvas = CropCanvas(image: image)
@@ -274,7 +360,7 @@ enum ToolUI {
 
         var result: String?
         let cancel = NSButton(title: "Cancel", target: nil, action: nil)
-        let apply = NSButton(title: "Crop", target: nil, action: nil)
+        let apply = NSButton(title: actionTitle, target: nil, action: nil)
         apply.keyEquivalent = "\r"
         cancel.keyEquivalent = "\u{1b}"
         apply.isEnabled = false
@@ -320,6 +406,23 @@ enum ToolUI {
         let response = NSApp.runModal(for: window)
         window.orderOut(nil)
         return response == .OK ? result : nil
+    }
+
+    // MARK: Video frame
+
+    /// Grabs a representative frame so the redaction box can be dragged on
+    /// real pixels instead of typed coordinates.
+    private static func videoFrame(_ input: URL, info: MediaProbe.Info) -> CGImage? {
+        let frameURL = Temp.dir(prefix: "zest-redact")
+            .appendingPathComponent("frame.png")
+        let time = info.duration > 0 ? min(1.0, info.duration / 2) : 0
+        do {
+            try MediaEngine.snapshot(input, at: time, to: frameURL)
+            return try ImageEngine.load(frameURL)
+        } catch {
+            Alert.show("Can't read a frame", detail: error.localizedDescription)
+            return nil
+        }
     }
 
     // MARK: Markup editor

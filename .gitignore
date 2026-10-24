@@ -5,5 +5,11 @@
 Zest/.build/
 Zest/Zest.app/
 
+# Stale debris bundle (contains binaries that trap on launch — never commit)
+Zest/Zest 2.app/
+
 # Harness artifacts
 Zest/Harness/run/
+
+# Local reference material (not needed to build or run)
+RE/

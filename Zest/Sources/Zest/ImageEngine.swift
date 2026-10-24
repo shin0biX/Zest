@@ -17,6 +17,13 @@ enum ImageEngine {
         let quality = Double(params["quality"] ?? "")
             ?? defaultQuality(for: fmt.ext)
         try encode(image, to: out, ext: fmt.ext, quality: quality)
+        if params["preserveMetadata"] != "0", let exiftool = ToolFinder.exiftool {
+            // ImageIO re-encodes pixels; ExifTool carries the metadata across
+            // best-effort. Missing ExifTool is not an error.
+            _ = try? Shell.run(exiftool, ["-q", "-q", "-overwrite_original",
+                                          "-TagsFromFile", input.path,
+                                          "-all:all", out.path])
+        }
         return [out]
     }
 
@@ -213,6 +220,83 @@ enum ImageOps {
             out = markup(out, json: markdown)
         }
         return out
+    }
+
+    /// Add BG / frame: pad the photo on a coloured card, optionally with a
+    /// fixed aspect, rounded corners, a border and a drop shadow.
+    static func addBackground(_ image: CGImage, params: [String: String]) -> CGImage {
+        let paddingPct = min(40, max(0, Double(params["padding"] ?? "10") ?? 10))
+        let minSide = Double(min(image.width, image.height))
+        let pad = max(0, Int((minSide * paddingPct / 100).rounded()))
+        var contentW = image.width + pad * 2
+        var contentH = image.height + pad * 2
+
+        let ratioText = params["ratio"] ?? "original"
+        let namedRatio: [String: Double] = [
+            "square": 1, "4:3": 4.0 / 3.0, "16:9": 16.0 / 9.0,
+            "9:16": 9.0 / 16.0, "3:2": 3.0 / 2.0
+        ]
+        if let ratio = namedRatio[ratioText] {
+            let current = Double(contentW) / Double(contentH)
+            if current > ratio {
+                contentH = Int((Double(contentW) / ratio).rounded())
+            } else {
+                contentW = Int((Double(contentH) * ratio).rounded())
+            }
+        }
+
+        let shadowStyle = params["shadow"] ?? "none"
+        let margin = shadowStyle == "none" ? 0 : max(10, Int((minSide * 0.05).rounded()))
+        let width = max(1, contentW + margin * 2)
+        let height = max(1, contentH + margin * 2)
+        let card = CGRect(x: CGFloat(margin), y: CGFloat(margin),
+                          width: CGFloat(contentW), height: CGFloat(contentH))
+        let border = max(0, Int(params["border"] ?? "0") ?? 0)
+        let radiusPct = min(50, max(0, Double(params["radius"] ?? "4") ?? 4))
+        let radius = Double(min(contentW, contentH)) * radiusPct / 100
+        let pathRect = card.insetBy(dx: CGFloat(border) / 2, dy: CGFloat(border) / 2)
+        let path = CGPath(roundedRect: pathRect,
+                          cornerWidth: CGFloat(radius), cornerHeight: CGFloat(radius),
+                          transform: nil)
+
+        let background = NSColor(hex: params["background"] ?? "#FFFFFF") ?? .white
+        let borderColor = NSColor(hex: params["borderColor"] ?? "#000000") ?? .black
+
+        return canvas(width: width, height: height) { ctx in
+            if shadowStyle != "none" {
+                let strong = shadowStyle == "strong"
+                ctx.saveGState()
+                ctx.setShadow(offset: CGSize(width: 0, height: strong ? -10 : -5),
+                              blur: CGFloat(strong ? 28 : 16),
+                              color: NSColor.black.withAlphaComponent(strong ? 0.45 : 0.28).cgColor)
+                ctx.setFillColor(background.cgColor)
+                ctx.addPath(path)
+                ctx.fillPath()
+                ctx.restoreGState()
+            } else {
+                ctx.setFillColor(background.cgColor)
+                ctx.addPath(path)
+                ctx.fillPath()
+            }
+
+            if border > 0 {
+                ctx.addPath(path)
+                ctx.setStrokeColor(borderColor.cgColor)
+                ctx.setLineWidth(CGFloat(border))
+                ctx.strokePath()
+            }
+
+            ctx.saveGState()
+            ctx.addPath(path)
+            ctx.clip()
+            let imageRect = CGRect(x: card.midX - CGFloat(image.width) / 2,
+                                   y: card.midY - CGFloat(image.height) / 2,
+                                   width: CGFloat(image.width),
+                                   height: CGFloat(image.height))
+            ctx.interpolationQuality = .high
+            ctx.draw(image, in: imageRect)
+            ctx.restoreGState()
+        } ?? image
     }
 
     static func parseRect(_ text: String) -> CGRect? {

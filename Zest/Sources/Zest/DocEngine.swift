@@ -1,4 +1,5 @@
 import AppKit
+import PDFKit
 
 // MARK: - Documents
 
@@ -35,8 +36,15 @@ enum DocEngine {
             return [out]
         case "pdf":
             let out = Naming.output(for: input, ext: "pdf")
-            let attr = try TextTools.attributedDocument(input)
-            try TextTools.pdf(from: attr, to: out)
+            // "Flowing text" drops the source styling; "editable paragraphs"
+            // keeps the rich runs that textutil hands back.
+            let body: NSAttributedString
+            if params["pdfLayout"] == "flowing" {
+                body = TextTools.attributed(try TextTools.plainText(from: input))
+            } else {
+                body = try TextTools.attributedDocument(input)
+            }
+            try TextTools.pdf(from: body, to: out)
             return [out]
         case "docx":
             let out = Naming.output(for: input, ext: "docx")
@@ -65,10 +73,20 @@ enum DocEngine {
             try html.write(to: out, atomically: true, encoding: .utf8)
             return [out]
         case "epub":
-            let text = try TextTools.plainText(from: input)
             let out = Naming.output(for: input, ext: "epub")
-            try EpubWriter.write(title: input.deletingPathExtension().lastPathComponent,
-                                 pages: [text], to: out)
+            let title = input.deletingPathExtension().lastPathComponent
+            if params["epubLayout"] == "fixed" {
+                // Paginate first, then keep those pages as images.
+                let pdf = Temp.dir(prefix: "zest-epub").appendingPathComponent("doc.pdf")
+                try TextTools.pdf(from: try TextTools.attributedDocument(input), to: pdf)
+                guard let doc = PDFDocument(url: pdf) else {
+                    throw ZestError("Couldn't paginate \(input.lastPathComponent)")
+                }
+                try PDFEngine.writeFixedEPUB(doc, input: input, to: out)
+            } else {
+                let text = try TextTools.plainText(from: input)
+                try EpubWriter.write(title: title, pages: [text], to: out)
+            }
             return [out]
         case "pages":
             return try pagesOutput(input, to: fmt)

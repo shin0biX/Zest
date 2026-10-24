@@ -1,5 +1,7 @@
 import AppKit
 import CoreText
+import ImageIO
+import UniformTypeIdentifiers
 
 // MARK: - Text tools
 
@@ -533,6 +535,96 @@ enum EpubWriter {
             try html.write(to: dir.appendingPathComponent("OEBPS/chapter\(index).xhtml"),
                            atomically: true, encoding: .utf8)
         }
+
+        try ZipUtil.zipEPUB(dir, to: out)
+    }
+
+    /// Fixed-layout EPUB: one page image per XHTML page with a pre-paginated
+    /// viewport, so the layout survives exactly as rendered.
+    static func writeFixed(title: String, images: [CGImage], to out: URL) throws {
+        guard !images.isEmpty else { throw ZestError("No pages for the fixed-layout EPUB") }
+        let dir = Temp.dir(prefix: "zest-epub")
+        let oebps = dir.appendingPathComponent("OEBPS")
+        let imageDir = oebps.appendingPathComponent("images")
+        try FileManager.default.createDirectory(at: dir.appendingPathComponent("META-INF"),
+                                                withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: imageDir,
+                                                withIntermediateDirectories: true)
+
+        try "application/epub+zip".write(to: dir.appendingPathComponent("mimetype"),
+                                         atomically: true, encoding: .utf8)
+        let container = """
+        <?xml version="1.0" encoding="UTF-8"?>
+        <container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container">
+        <rootfiles><rootfile full-path="OEBPS/content.opf" media-type="application/oebps-package+xml"/></rootfiles>
+        </container>
+        """
+        try container.write(to: dir.appendingPathComponent("META-INF/container.xml"),
+                            atomically: true, encoding: .utf8)
+
+        var manifest = ""
+        var spine = ""
+        var navItems = ""
+        for (index, image) in images.enumerated() {
+            let number = index + 1
+            let name = "page-\(number).jpg"
+            let file = imageDir.appendingPathComponent(name)
+            guard let destination = CGImageDestinationCreateWithURL(
+                file as CFURL, UTType.jpeg.identifier as CFString, 1, nil) else {
+                throw ZestError("Couldn't write \(name)")
+            }
+            CGImageDestinationAddImage(destination, image,
+                                       [kCGImageDestinationLossyCompressionQuality: 0.86] as CFDictionary)
+            guard CGImageDestinationFinalize(destination) else {
+                throw ZestError("Couldn't finish \(name)")
+            }
+
+            let xhtml = """
+            <?xml version="1.0" encoding="utf-8"?>
+            <!DOCTYPE html>
+            <html xmlns="http://www.w3.org/1999/xhtml"><head><title>Page \(number)</title>
+            <meta name="viewport" content="width=\(image.width),height=\(image.height)"/>
+            <style>html,body{margin:0;padding:0;width:100%;height:100%;}img{display:block;width:100%;height:100%;object-fit:contain;}</style>
+            </head><body><img src="images/\(name)" alt="Page \(number)"/></body></html>
+            """
+            try xhtml.write(to: oebps.appendingPathComponent("page-\(number).xhtml"),
+                            atomically: true, encoding: .utf8)
+            manifest += "<item id=\"p\(number)\" href=\"page-\(number).xhtml\" media-type=\"application/xhtml+xml\"/>\n"
+            manifest += "<item id=\"i\(number)\" href=\"images/\(name)\" media-type=\"image/jpeg\"/>\n"
+            spine += "<itemref idref=\"p\(number)\"/>\n"
+            navItems += "<li><a href=\"page-\(number).xhtml\">Page \(number)</a></li>\n"
+        }
+
+        let nav = """
+        <?xml version="1.0" encoding="utf-8"?>
+        <!DOCTYPE html>
+        <html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops">
+        <head><title>Contents</title></head>
+        <body><nav epub:type="toc"><h1>Contents</h1><ol>\(navItems)</ol></nav></body></html>
+        """
+        try nav.write(to: oebps.appendingPathComponent("nav.xhtml"),
+                      atomically: true, encoding: .utf8)
+
+        let modified = ISO8601DateFormatter().string(from: Date())
+        let opf = """
+        <?xml version="1.0" encoding="utf-8"?>
+        <package xmlns="http://www.idpf.org/2007/opf" version="3.0" unique-identifier="bookid">
+        <metadata xmlns:dc="http://purl.org/dc/elements/1.1/">
+        <dc:title>\(TextTools.escapeXML(title))</dc:title>
+        <dc:language>en</dc:language>
+        <dc:identifier id="bookid">urn:uuid:\(UUID().uuidString)</dc:identifier>
+        <meta property="dcterms:modified">\(modified)</meta>
+        <meta property="rendition:layout">pre-paginated</meta>
+        <meta property="rendition:spread">none</meta>
+        </metadata>
+        <manifest>
+        <item id="nav" href="nav.xhtml" media-type="application/xhtml+xml" properties="nav"/>
+        \(manifest)</manifest>
+        <spine>\(spine)</spine>
+        </package>
+        """
+        try opf.write(to: oebps.appendingPathComponent("content.opf"),
+                      atomically: true, encoding: .utf8)
 
         try ZipUtil.zipEPUB(dir, to: out)
     }

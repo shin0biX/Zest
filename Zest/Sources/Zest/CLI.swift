@@ -28,6 +28,8 @@ enum CLI {
             return UITest.run()
         case "wheel":
             return wheelSnapshot(rest)
+        case "settings-preview":
+            return settingsPreview(rest)
         case "help", "-h", "--help":
             usage()
             return 0
@@ -66,6 +68,28 @@ enum CLI {
         return 0
     }
 
+    // MARK: settings preview
+
+    /// Development-only preview used while matching the Tangerine settings
+    /// layout. Renders one tab offscreen so no screen-recording grant is needed.
+    /// Usage: `Zest settings-preview <tab 0-4> <out.png>`.
+    private static func settingsPreview(_ args: [String]) -> Int32 {
+        guard args.count >= 2 else {
+            err("Usage: Zest settings-preview <tab 0-4> <out.png>")
+            return 2
+        }
+        let app = NSApplication.shared
+        app.setActivationPolicy(.prohibited)
+        let controller = SettingsWindow()
+        controller.showTabForPreview(Int(args[0]) ?? 0)
+        guard controller.snapshotForPreview(to: URL(fileURLWithPath: args[1])) else {
+            err("Couldn't render the settings preview")
+            return 1
+        }
+        out(URL(fileURLWithPath: args[1]).path)
+        return 0
+    }
+
     // MARK: wheel snapshot
 
     /// Renders the wheel offscreen to PNG. Screen Recording is denied on this
@@ -76,13 +100,14 @@ enum CLI {
         var kind: Kind = .image
         var hover: Int?
         var mode: WheelMode = .convert
+        var style: WheelStyle = Prefs.wheelStyle
         var index = 0
         while index < args.count {
             let arg = args[index]
             switch arg {
             case "--kind":
                 guard index + 1 < args.count, let parsed = Kind(rawValue: args[index + 1]) else {
-                    err("Usage: Zest wheel <out.png> [--kind image|video|audio|pdf|document|slides|sheet|subtitle|archive|folder] [--hover N]")
+                    err("Usage: Zest wheel <out.png> [--kind image|video|audio|pdf|document|slides|sheet|subtitle|archive|folder] [--style fan|rings] [--mode convert|tools|actions] [--hover N]")
                     return 2
                 }
                 kind = parsed
@@ -101,6 +126,13 @@ enum CLI {
                 }
                 mode = parsed
                 index += 2
+            case "--style":
+                guard index + 1 < args.count, let parsed = WheelStyle(rawValue: args[index + 1]) else {
+                    err("--style needs fan or rings")
+                    return 2
+                }
+                style = parsed
+                index += 2
             default:
                 if arg.hasPrefix("-") {
                     err("Unknown option: \(arg)")
@@ -111,7 +143,7 @@ enum CLI {
             }
         }
         guard let output else {
-            err("Usage: Zest wheel <out.png> [--kind …] [--mode …] [--hover N]")
+            err("Usage: Zest wheel <out.png> [--kind …] [--style fan|rings] [--mode …] [--hover N]")
             return 2
         }
 
@@ -119,11 +151,13 @@ enum CLI {
         let snapshotURL = sampleURL(for: kind)
         let side: CGFloat = 1000
         let view = WheelView(frame: NSRect(x: 0, y: 0, width: side, height: side))
+        view.style = style
         view.surfaces = Catalog.surfaces(for: [snapshotURL])
         view.emphasize(mode)
         view.center = NSPoint(x: side / 2, y: side / 2)
         view.count = 1
         view.kind = kind
+        view.totalBytes = snapshotURL.fileSize
         view.showBackdrop = true
         if let hover, hover >= 0 {
             var remaining = hover
@@ -509,6 +543,27 @@ enum CLI {
         let png = samples.png
         let pdf = samples.pdf
 
+        // Tool resolution must not trust a binary just because it exists.
+        harness.check("Tool resolution skips broken binaries") {
+            let dir = root.appendingPathComponent("toolcheck", isDirectory: true)
+            try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+            let broken = dir.appendingPathComponent("ffmpeg-broken")
+            let good = dir.appendingPathComponent("ffmpeg-good")
+            try "#!/bin/sh\nexit 133\n".write(to: broken, atomically: true, encoding: .utf8)
+            try "#!/bin/sh\necho ffmpeg version test\nexit 0\n".write(to: good, atomically: true, encoding: .utf8)
+            for path in [broken.path, good.path] {
+                try FileManager.default.setAttributes([.posixPermissions: 0o755],
+                                                      ofItemAtPath: path)
+            }
+            guard ToolFinder.resolve("ffmpeg", candidates: [broken.path, good.path]) == good.path else {
+                throw ZestError("a broken binary shadowed the working one")
+            }
+            guard ToolFinder.resolve("ffmpeg", candidates: [broken.path]) == nil else {
+                throw ZestError("a broken binary was accepted")
+            }
+            return [good]
+        }
+
         // Image engine and image tools.
         harness.check("PNG → JPG") { try Convert.perform(png, to: format("jpg", for: .image)) }
         if ToolFinder.cwebp != nil {
@@ -555,6 +610,20 @@ enum CLI {
                 "markup": "{\"ops\":[{\"t\":\"rect\",\"rect\":[0.1,0.1,0.25,0.2],\"color\":[1,0,0,1],\"width\":0.004}]}"
             ])
         }
+        harness.check("Image add background") {
+            let outputs = try ToolRunner.run(tool: "frame", inputs: [png], params: [
+                "padding": "12", "ratio": "square", "background": "#FFCC00",
+                "radius": "8", "border": "4", "shadow": "soft", "format": "png"
+            ])
+            guard let out = outputs.first, let image = try? ImageEngine.load(out) else {
+                throw ZestError("Add BG produced no readable image")
+            }
+            let source = try ImageEngine.load(png)
+            guard image.width == image.height, image.width > source.width else {
+                throw ZestError("Add BG did not produce a larger square canvas")
+            }
+            return outputs
+        }
         harness.check("Image strip metadata") {
             try ToolRunner.run(tool: "strip", inputs: [png], params: [:])
         }
@@ -576,6 +645,19 @@ enum CLI {
         harness.check("PDF → PPTX") { try Convert.perform(pdf, to: format("pptx", for: .pdf)) }
         harness.check("PDF → XLSX") { try Convert.perform(pdf, to: format("xlsx", for: .pdf)) }
         harness.check("PDF → EPUB") { try Convert.perform(pdf, to: format("epub", for: .pdf)) }
+        harness.check("PDF → EPUB (fixed layout)") {
+            let out = try Convert.perform(pdf, to: format("epub", for: .pdf),
+                                          params: ["epubLayout": "fixed"])
+            let listing = try Shell.run("/usr/bin/unzip", ["-l", out[0].path])
+            guard listing.contains("images/page-1.jpg") else {
+                throw ZestError("fixed layout has no page images")
+            }
+            let opf = try Shell.run("/usr/bin/unzip", ["-p", out[0].path, "OEBPS/content.opf"])
+            guard opf.contains("pre-paginated") else {
+                throw ZestError("fixed layout metadata is missing")
+            }
+            return out
+        }
         harness.check("PDF → RTF") { try Convert.perform(pdf, to: format("rtf", for: .pdf)) }
         harness.check("Scanned PDF → TXT (OCR)") {
             let outputs = try Convert.perform(samples.scannedPDF, to: format("txt", for: .pdf))
@@ -661,6 +743,19 @@ enum CLI {
         harness.check("TXT → HTML") { try Convert.perform(samples.txt, to: format("html", for: .document)) }
         harness.check("TXT → EPUB") { try Convert.perform(samples.txt, to: format("epub", for: .document)) }
         harness.check("DOCX → PDF") { try Convert.perform(samples.docx, to: format("pdf", for: .document)) }
+        harness.check("DOCX → PDF (flowing layout)") {
+            try Convert.perform(samples.docx, to: format("pdf", for: .document),
+                                params: ["pdfLayout": "flowing"])
+        }
+        harness.check("DOCX → EPUB (fixed layout)") {
+            let out = try Convert.perform(samples.docx, to: format("epub", for: .document),
+                                          params: ["epubLayout": "fixed"])
+            let listing = try Shell.run("/usr/bin/unzip", ["-l", out[0].path])
+            guard listing.contains("images/page-1.jpg") else {
+                throw ZestError("fixed layout has no page images")
+            }
+            return out
+        }
         harness.check("DOCX → TXT") { try Convert.perform(samples.docx, to: format("txt", for: .document)) }
         harness.check("Markdown → HTML") { try Convert.perform(samples.md, to: format("html", for: .document)) }
         harness.check("Markdown → PDF") { try Convert.perform(samples.md, to: format("pdf", for: .document)) }
@@ -698,6 +793,16 @@ enum CLI {
                 at: dir, includingPropertiesForKeys: nil)) ?? []
             guard !contents.isEmpty else { throw ZestError("archive extracted empty") }
             return contents
+        }
+        harness.check("Archive extract tool") {
+            let outputs = try ToolRunner.run(tool: "extract", inputs: [samples.zip], params: [:])
+            guard let dir = outputs.first, dir.hasDirectoryPath else {
+                throw ZestError("Extract tool did not return a folder")
+            }
+            let contents = (try? FileManager.default.contentsOfDirectory(
+                at: dir, includingPropertiesForKeys: nil)) ?? []
+            guard !contents.isEmpty else { throw ZestError("Extract tool produced an empty folder") }
+            return outputs
         }
         harness.check("ZIP → TAR") {
             try Convert.perform(samples.zip, to: format("tar", for: .archive))
@@ -754,6 +859,14 @@ enum CLI {
                 try ToolRunner.run(tool: "snapshot", inputs: [samples.mp4],
                                    params: ["time": "0.2", "format": "png"])
             }
+            harness.check("Media snapshots") {
+                let outputs = try ToolRunner.run(tool: "snapshots", inputs: [samples.mp4],
+                                                 params: ["times": "0,0.2", "format": "png"])
+                guard outputs.count == 2,
+                      outputs.allSatisfy({ FileManager.default.fileExists(atPath: $0.path) })
+                else { throw ZestError("Snapshots did not write both frames") }
+                return outputs
+            }
             harness.check("Media GIF tool") {
                 try ToolRunner.run(tool: "gif", inputs: [samples.mp4],
                                    params: ["fps": "8", "width": "320"])
@@ -772,6 +885,61 @@ enum CLI {
                 try ToolRunner.run(tool: "bleep", inputs: [samples.wav],
                                    params: ["start": "0.1", "end": "0.3"])
             }
+            harness.check("Media redact video") {
+                guard let ffmpeg = ToolFinder.ffmpeg else { throw ZestError("ffmpeg required") }
+                // A white clip makes the box assertion unambiguous.
+                let solid = root.appendingPathComponent("solid.mp4")
+                try Shell.run(ffmpeg, ["-y", "-f", "lavfi", "-i",
+                                       "color=c=white:s=320x240:r=24:d=1",
+                                       "-c:v", "libx264", "-pix_fmt", "yuv420p", solid.path])
+                let outputs = try ToolRunner.run(
+                    tool: "redactVideo", inputs: [solid],
+                    params: ["x": "40", "y": "30", "w": "160", "h": "90",
+                             "start": "0", "end": "0.6", "mode": "box"])
+                let frames = root.appendingPathComponent("redact-frames", isDirectory: true)
+                try FileManager.default.createDirectory(at: frames, withIntermediateDirectories: true)
+                let inside = frames.appendingPathComponent("inside.png")
+                let outside = frames.appendingPathComponent("outside.png")
+                try MediaEngine.snapshot(outputs[0], at: 0.3, to: inside)
+                try MediaEngine.snapshot(outputs[0], at: 0.85, to: outside)
+                let masked = try pixel(in: inside, x: 120, y: 75)
+                let clear = try pixel(in: outside, x: 120, y: 75)
+                guard (masked.max() ?? 255) < 20 else {
+                    throw ZestError("redacted pixel is not black (\(masked))")
+                }
+                guard (clear.min() ?? 0) > 200 else {
+                    throw ZestError("pixel outside the range changed (\(clear))")
+                }
+                return outputs
+            }
+            harness.check("Media redact audio") {
+                let outputs = try ToolRunner.run(tool: "redactAudio", inputs: [samples.wav],
+                                                 params: ["start": "0.1", "end": "0.4",
+                                                          "mode": "tone", "frequency": "880"])
+                // The tone replaces the range; the rest of the track is untouched.
+                let probe = ToolFinder.ffprobe
+                if let probe {
+                    let (status, _) = try Shell.runAllowFailure(probe, [
+                        "-v", "error", "-show_entries", "format=duration",
+                        "-of", "default=noprint_wrappers=1", outputs[0].path])
+                    guard status == 0 else { throw ZestError("ffprobe can't read the redacted audio") }
+                }
+                return outputs
+            }
+            harness.check("Media audio to video") {
+                let outputs = try ToolRunner.run(tool: "audioToVideo", inputs: [samples.wav],
+                                                 params: ["width": "640", "height": "360",
+                                                          "color": "#1C1C1E"])
+                if let probe = ToolFinder.ffprobe {
+                    let (status, text) = try Shell.runAllowFailure(probe, [
+                        "-v", "error", "-show_entries", "stream=codec_type",
+                        "-of", "csv=p=0", outputs[0].path])
+                    guard status == 0, text.contains("video"), text.contains("audio") else {
+                        throw ZestError("audio-to-video output is missing a stream: \(text)")
+                    }
+                }
+                return outputs
+            }
             harness.check("Media channels") {
                 try ToolRunner.run(tool: "channels", inputs: [samples.wav], params: ["mode": "mono"])
             }
@@ -785,8 +953,8 @@ enum CLI {
                 try ToolRunner.run(tool: "strip", inputs: [samples.mp4], params: [:])
             }
         } else {
-            harness.skip += 20
-            out("SKIP  20 media checks — ffmpeg is not installed")
+            harness.skip += 23
+            out("SKIP  23 media checks — ffmpeg is not installed")
         }
     }
 
@@ -810,6 +978,23 @@ enum CLI {
                 Log.write("SELFTEST FAIL \(label): \(error.localizedDescription)")
             }
         }
+    }
+
+    /// Samples one pixel from an image file, top-left origin.
+    private static func pixel(in url: URL, x: Int, y: Int) throws -> [UInt8] {
+        let image = try ImageEngine.load(url)
+        guard let slice = image.cropping(to: CGRect(x: x, y: y, width: 1, height: 1)) else {
+            throw ZestError("can't crop \(url.lastPathComponent)")
+        }
+        var data = [UInt8](repeating: 0, count: 4)
+        guard let ctx = CGContext(data: &data, width: 1, height: 1, bitsPerComponent: 8,
+                                  bytesPerRow: 4, space: CGColorSpaceCreateDeviceRGB(),
+                                  bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else {
+            throw ZestError("can't sample \(url.lastPathComponent)")
+        }
+        ctx.interpolationQuality = .none
+        ctx.draw(slice, in: CGRect(x: 0, y: 0, width: 1, height: 1))
+        return Array(data.prefix(3))
     }
 
     private static func verify(_ url: URL) throws {

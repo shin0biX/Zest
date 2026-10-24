@@ -833,7 +833,8 @@ final class Harness {
     @discardableResult
     func dragAndChoose(trigger: Modifier, expectedMode: String, choice: String,
                        fromIconNamed iconName: String,
-                       timeout: TimeInterval = 10) throws -> WheelLine {
+                       timeout: TimeInterval = 10,
+                       dropAttempt: Int = 1) throws -> WheelLine {
         guard let window else { throw HarnessFailure("no Finder window is open") }
 
         try activateFinder()
@@ -941,6 +942,14 @@ final class Harness {
                 + log.recent(12).joined(separator: "\n"))
         }
 
+        // The panel is ordered front and fades in before it can receive drag
+        // updates. A synthetic drag can reach the slice while the window is
+        // still being installed, so give the overlay one beat to settle.
+        pause(0.35)
+        if !NSEvent.modifierFlags.contains(trigger.nsFlag) {
+            press(trigger)
+        }
+
         let choices = wheel.choices
         guard choices.contains(choice) else {
             cancelDrag(at: current)
@@ -984,6 +993,17 @@ final class Harness {
         }
 
         guard committed, let choiceLine else {
+            // A synthetic drag occasionally ends before the panel receives
+            // draggingEntered, especially right after launch. Start a fresh
+            // drag once the disarm grace period has closed the old wheel.
+            if dropAttempt < 3 {
+                print("      drop retry \(dropAttempt)/3 for \(iconName)")
+                cancelDrag(at: target)
+                pause(1.3)
+                return try dragAndChoose(trigger: trigger, expectedMode: expectedMode,
+                                         choice: choice, fromIconNamed: iconName,
+                                         timeout: timeout, dropAttempt: dropAttempt + 1)
+            }
             throw HarnessFailure("the drop never reached the wheel (no Choice line). Recent log:\n"
                 + log.recent(12).joined(separator: "\n"))
         }
