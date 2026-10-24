@@ -100,7 +100,8 @@ final class HUDController {
         let icon = NSImageView()
         icon.translatesAutoresizingMaskIntoConstraints = false
         icon.image = NSImage(systemSymbolName: "doc.fill", accessibilityDescription: nil)
-        icon.contentTintColor = .secondaryLabelColor
+        // Working rows carry the device's green activation light.
+        icon.contentTintColor = Omnitrix.lime.withAlphaComponent(0.9)
         row.addSubview(icon)
 
         let titleLabel = NSTextField(labelWithString: title)

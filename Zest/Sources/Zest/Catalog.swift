@@ -21,13 +21,9 @@ enum WheelMode: String {
         }
     }
 
-    var accent: NSColor {
-        switch self {
-        case .convert: return .controlAccentColor
-        case .tools: return NSColor.systemOrange
-        case .actions: return NSColor.systemTeal
-        }
-    }
+    /// One activation colour for every mode: the device's lime. Green means
+    /// selected/armed wherever the wheel shows it.
+    var accent: NSColor { Omnitrix.lime }
 }
 
 struct WheelChoice {
