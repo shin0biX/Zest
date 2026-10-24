@@ -1,5 +1,6 @@
 import AppKit
 import PDFKit
+import Quartz
 import ImageIO
 import UniformTypeIdentifiers
 import Vision
@@ -192,6 +193,28 @@ enum PDFEngine {
         guard let doc = PDFDocument(url: input) else {
             throw ZestError("Can't open PDF")
         }
+
+        // Vector-first: the system "Reduce File Size" Quartz filter
+        // recompresses embedded images while leaving text, links, and
+        // annotations intact. The raster path below remains the fallback for
+        // byte targets the filter cannot reach.
+        let inputSize: Int64 = input.fileSize
+        let produced: Int64? = (try? compressVector(doc: doc, to: out)) ?? nil
+        if let shrunk: Int64 = produced {
+            // Without a byte target, keep the vector result whenever it does
+            // not inflate the file — text-only PDFs cannot shrink, and
+            // keeping their text beats saving 1 %. A hard target still falls
+            // back to the raster search below when the filter misses it.
+            let acceptable: Bool
+            if let target = targetBytes {
+                acceptable = shrunk <= target
+            } else {
+                acceptable = shrunk <= inputSize + inputSize / 20
+            }
+            if acceptable {
+                return
+            }
+        }
         let presets: [(Double, Double)] = {
             switch Prefs.quality {
             case "light": return [(200, 0.82), (160, 0.7), (130, 0.58)]
@@ -215,6 +238,40 @@ enum PDFEngine {
             if let targetBytes, size <= targetBytes { break }
         }
         guard bestSize != Int64.max else { throw ZestError("PDF compression failed") }
+    }
+
+    /// Re-draws every page through the system "Reduce File Size" filter.
+    /// Content stays vector: text remains selectable and searchable. Returns
+    /// the produced byte size, or nil when the filter is unavailable or the
+    /// pass fails.
+    @discardableResult
+    private static func compressVector(doc: PDFDocument, to out: URL) throws -> Int64? {
+        guard let filter = reduceFileSizeFilter() else { return nil }
+        var defaultBox = CGRect(x: 0, y: 0, width: 612, height: 792)
+        guard let ctx = CGContext(out as CFURL, mediaBox: &defaultBox, nil) else {
+            return nil
+        }
+        for index in 0..<doc.pageCount {
+            guard let page = doc.page(at: index) else { continue }
+            let media = page.pageRef?.getBoxRect(.mediaBox) ?? defaultBox
+            var pageBox = media
+            let info: [CFString: Any] = [
+                kCGPDFContextMediaBox: Data(bytes: &pageBox,
+                                            count: MemoryLayout<CGRect>.size)
+            ]
+            ctx.beginPDFPage(info as CFDictionary)
+            filter.apply(to: ctx)
+            page.draw(with: .mediaBox, to: ctx)
+            ctx.endPDFPage()
+        }
+        ctx.closePDF()
+        guard out.fileSize > 0 else { return nil }
+        return out.fileSize
+    }
+
+    private static func reduceFileSizeFilter() -> QuartzFilter? {
+        let url = URL(fileURLWithPath: "/System/Library/Filters/Reduce File Size.qfilter")
+        return QuartzFilter(url: url)
     }
 
     private static func buildCompressed(doc: PDFDocument, dpi: Double,

@@ -783,6 +783,24 @@ enum CLI {
             }
             return outputs
         }
+        harness.check("PDF compression keeps text selectable") {
+            // The vector path must survive compression: text stays real text,
+            // not a picture of text.
+            let textPDF = root.appendingPathComponent("text.pdf")
+            try TextTools.pdf(from: "The quick brown fox jumps over the lazy dog",
+                              to: textPDF)
+            let compressed = try ToolRunner.run(tool: "compress", inputs: [textPDF],
+                                                params: [:])
+            guard let doc = PDFDocument(url: compressed[0]),
+                  let text = doc.string else {
+                throw ZestError("compressed PDF did not reopen")
+            }
+            guard text.contains("quick brown fox") else {
+                throw ZestError("text was rasterized away by compression")
+            }
+            return compressed
+        }
+
         harness.check("PDF compress") {
             try ToolRunner.run(tool: "compress", inputs: [pdf], params: [:])
         }
