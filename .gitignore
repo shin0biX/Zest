@@ -13,3 +13,6 @@ Zest/Harness/run/
 
 # Local reference material (not needed to build or run)
 RE/
+
+# Local distribution artifacts (Zest.dmg)
+dist/
