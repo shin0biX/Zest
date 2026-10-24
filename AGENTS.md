@@ -2,9 +2,9 @@
 
 Handoff context for any future session working in this repository.
 
-Last verified: **2026-10-24** — matte graphite fan, all suites and the external harness
-green (see *Current state*). Read **Current state** and **Resume checklist** before
-touching code. Historical sections at the bottom are labelled **History**; where they
+Last verified: **2026-10-24** — compact graphite-glass fan, all suites and the external
+harness green (see *Current state*). Read **Current state** and **Resume checklist**
+before touching code. Historical sections at the bottom are labelled **History**; where they
 disagree with the source code, **`Overlay.swift` and the other sources are
 authoritative**.
 
@@ -26,10 +26,11 @@ modifier, and pick a target from the wheel. This is a personal build, not a dist
 
 ## Current state (authoritative)
 
-- **Fan wheel: matte graphite, fully verified.** Medium 480 pt petal flower
-  (`fanInnerRadius 84`, `fanOuterRadius 240`) around the dynamic file hub. Design details
-  and prohibitions in *Approved fan-wheel design*; geometry constants live in
-  `Overlay.swift` (`FanPetalGeometry`, `makeFanPetal`) and are authoritative.
+- **Fan wheel: compact graphite glass, fully verified.** 384 pt petal flower
+  (`fanInnerRadius 68`, `fanOuterRadius 192` — ~80% of the previous 480 pt disc, at the
+  operator's request) around the dynamic file hub. Design details and prohibitions in
+  *Approved fan-wheel design*; geometry constants live in `Overlay.swift`
+  (`FanPetalGeometry`, `makeFanPetal`) and are authoritative.
 - **Working tree (uncommitted, commit-ready):** `AGENTS.md`,
   `Zest/Sources/Zest/Overlay.swift`, `Zest/Sources/Zest/UITest.swift`,
   `Zest/Sources/Zest/CLI.swift`, `Zest/Sources/Zest/WelcomeWindow.swift`,
@@ -45,7 +46,7 @@ modifier, and pick a target from the wheel. This is a personal build, not a dist
     resolves Homebrew at runtime.
   - External harness — **12/12 scenarios in one batch** against this bundle
     (artifacts under `Zest/Harness/run/<scenario>/`). Log line reports
-    `radius=162 outer=240`; the harness aims from it dynamically.
+    `radius=130 outer=192`; the harness aims from it dynamically.
 - **Host capabilities:** Accessibility is granted to the automation host (the harness
   runs from agent sessions and the operator's terminal); Screen Recording works, but
   output files, logs, and `Zest wheel` remain the primary checks.
@@ -61,22 +62,27 @@ modifier, and pick a target from the wheel. This is a personal build, not a dist
 
 ## Approved fan-wheel design (current requirement)
 
-The approved look is the operator's **matte graphite** mock
-(`Dark Radial Menus Showcase.png`): understated charcoal petals, thin neutral borders, a
-near-black hub, white/grey typography, and one restrained amber selected petal. All
+The approved look is the operator's graphite design evolved into **smoked graphite
+glass** (the operator asked for a glass finish over the graphite direction): charcoal
+petals with subtle glass depth — dark neck pooling, a soft light pool on each rounded
+cap, a whisper of shared sheen, and lit glass edges — thin neutral borders, a near-black
+glass-puck hub, white/grey typography, and one restrained amber selected petal. All
 three surfaces (convert / tools / actions) share one geometry and material system.
 
 **Geometry** (summary — `Overlay.swift` is authoritative):
 
-- `fanInnerRadius = 84`, `fanOuterRadius = 240` (medium 480 pt disc; `discRadius = 240`,
-  overlay clamp margin 254). Log line: `radius=162 outer=240` at scale 1.
+- `fanInnerRadius = 68`, `fanOuterRadius = 192` (compact 384 pt disc — ~80% of the
+  earlier 480 pt; `discRadius = 192`, overlay clamp margin 206). Log line:
+  `radius=130 outer=192` at scale 1.
 - Petals fill **0.85 of the chord at every count**, so low-count fans grow wide paddles
   that fill the circle; `widthCap = 0.62 · (tip − innerTip)` only guards very sparse
   surfaces (three-petal folders) and never binds at eight or more.
 - Shoulders `0.46 / 0.58` (nearly parallel sides, slight outward bow), `innerHalf =
   0.40 · outerHalf`, `capBulge = 0.58 · outerHalf`, neck starts at
   `fanInner − 4 · scale` (petals emerge from behind the hub). Label anchor
-  `sideInner + 0.66 · length`, label width `2 · halfWidth(t) − 10 · scale`.
+  `sideInner + 0.73 · length` (in the petal's wide zone), label width
+  `2 · halfWidth(t) − 3 · scale` — the compact wheel needs most of the petal width for
+  labels; `fanLabelFont` ladders down to 8 pt as a floor.
 - No per-petal offsets, no wrap-boundary special case; one path serves drawing, label
   fitting, selection, and hit-testing.
 
@@ -84,20 +90,26 @@ three surfaces (convert / tools / actions) share one geometry and material syste
 
 | Use | Value |
 | --- | --- |
-| Petal fill gradient | `#1D1E21` (inner) → `#252629` (body) → `#303135` (broad end) |
-| Petal border | `#414247` (1 pt) |
-| Hub fill / border | `#17181B` (restrained top-light gradient) / `#3B3C40` (1.5 pt) |
-| Primary / secondary text | `#F1F1F3` / `#A1A1A7` |
-| Normal icons | `#D1D1D5` |
-| Selected fill / highlight | `#78451F` → `#9A5A27` |
-| Selected border / icon | `#C98535` (1.4 pt) / `#FFB34D` |
+| Petal fill gradient | `#202124` (neck) → `#2A2B2F` (body) → `#303136` (cap), stops at 0 / 0.45 / 1 |
+| Petal border | `#4A4B52` (1 pt) plus a 0.75 pt white 14 %-opacity glass edge light |
+| Glass cues | neck pooling (black 24 %), cap light pool (white 13 %), shared sheen (white 6 %) |
+| Hub fill / border | `#191A1D` (top-light gradient `#1E1F23` → `#151619`) / `#3B3C40` (1.5 pt) with a lit inner rim (white 13 %) and soft top light |
+| Primary / secondary text | `#F0F0F2` / `#A1A1A7` |
+| Normal icons | `#D0D0D5` (petals); hub icon `#F0F0F2` |
+| Selected fill / highlight | `#78451F` → `#965B2A` with a warm cap pool (amber-white 24 %) |
+| Selected border / icon | `#C98535` (1.4 pt) with a warm glass edge / `#FFB34D` |
 | Selected label | `#FFFFFF` |
 
-**Material rules:** one restrained fill gradient per petal, the fine border, and a small
-neutral shadow per petal (the selected petal's shadow is faintly warm). Labels are
-sentence case, semibold, measured against `petal.labelWidth`; icons stack above labels in
-screen space. The hub shows the real icon, filename, and `FORMAT · size` metadata.
-Fan mode paints **no backdrop plate**; shadows stay local to petals and the hub.
+**Material rules:** one restrained fill gradient per petal plus three glass cues —
+dark pooling at the neck, a soft light pool on the cap, a whisper of sheen — then the
+fine border with its lit inner edge, and a small neutral shadow per petal (the selected
+petal's shadow is faintly warm). Everything is neutral grey except the amber selection;
+the glass cues stay at 6–24 % opacity so the wheel keeps its matte character. Petal
+icons are 20 pt (22 selected), stacked above labels in screen space; hub content is
+sized for the 68 pt hub (26 pt icon, 14 pt semibold filename, 10 pt metadata). Labels
+are sentence case, semibold, measured against `petal.labelWidth`. The hub shows the real
+icon, filename, and `FORMAT · size` metadata. Fan mode paints **no backdrop plate**;
+shadows stay local to petals and the hub.
 
 **Explicitly prohibited in the fan** (all were rejected by the operator):
 
@@ -216,7 +228,7 @@ targe/
 - Overlay logging is load-bearing for the external harness: `Wheel mode=… count=… anchor=x,y
   screen=WxH radius=… outer=… rings=… choices=id,id,…` on every arm and mode switch, and
   `Choice <id> mode=…` on commit (`Choice cancel` on cancel). In fan mode `rings` has one
-  entry, `radius` is the ring midpoint (`162` at scale 1) and `outer` is `240`. Keep the
+  entry, `radius` is the ring midpoint (`130` at scale 1) and `outer` is `192`. Keep the
   format stable or update the harness.
 - `Zest wheel <out.png> [--kind …] [--style fan|rings] [--mode …] [--hover N]` renders
   the wheel offscreen at 2×. It is the deterministic visual check. Screen Recording is
@@ -407,8 +419,8 @@ Mechanics:
   mid-drag is not reliably re-targeted by the window server**; press the modifier between
   mouse-down and the first drag step. `uitest` drives mid-drag mode switching in-process.
 - Parse the newest `Wheel mode=… anchor=x,y screen=WxH radius=… outer=… rings=… choices=id,id,…`
-  line. In **fan** mode there is one ring and `radius` is the fan mid radius (`162` at
-  scale 1; `outer` is `240`). In **rings** mode `mode` names the emphasized ring and
+  line. In **fan** mode there is one ring and `radius` is the fan mid radius (`130` at
+  scale 1; `outer` is `192`). In **rings** mode `mode` names the emphasized ring and
   `radius` is its mid radius. Slice 0 is centered at the top:
   `step = 2π/count`, `start = π/2 + step/2`,
   `angle = start - (index+0.5)·step`. Convert the AppKit wheel point to CG top-left
@@ -656,7 +668,7 @@ overlay.
   crossing. Do not replace it with a per-petal angular wedge.
 - The `Wheel` log line must keep `mode`, `count`, `anchor`, `screen`, `choices` and must
   include `radius` and `outer`; the drag harness aims at `radius` and clamps with
-  `outer + 14`. Fan logs one ring with `radius=162` and `outer=240` at scale 1.
+  `outer + 14`. Fan logs one ring with `radius=130` and `outer=192` at scale 1.
 - Ring labels must fit the wedge chord: `2 · midRadius · sin(step/2) − 12` at
   `WheelView.labelFont(for:in:)`. Do not shrink the radius or raise the font without
   re-running `uitest`.
@@ -665,10 +677,11 @@ overlay.
   `FanPetalGeometry.halfWidth(at:)` and pick the largest size that fits. Re-render
   `Zest wheel --style fan --mode tools` after changing fan title lengths or petal
   geometry; `uitest` asserts the fit and the seam gaps — keep both green.
-- **Respect the approved graphite design** (see *Approved fan-wheel design*): no
-  blue/violet/pink/teal accents, no glow or luminous rims, no bright white outlines, no
-  bloom, no backdrop plate. Fan colors live only in `drawFanPetalBody`,
-  `drawFanPetalShadow`, `drawFanHub`, and `drawFanContent`.
+- **Respect the approved graphite-glass design** (see *Approved fan-wheel design*): no
+  blue/violet/pink/teal accents, no neon or luminous coloured rims, no bright white
+  outlines, no backdrop plate. The glass cues are the neutral, low-opacity ones listed
+  in the palette — anything brighter or coloured is a regression. Fan colors live only
+  in `drawFanPetalBody`, `drawFanPetalShadow`, `drawFanHub`, and `drawFanContent`.
 - PDF compression must pass a per-page `kCGPDFContextMediaBox`; do not regress to one
   default box.
 - PDF image extraction must keep native XObject pixels; use the page render only when a
@@ -691,11 +704,12 @@ manual run. Do not promote a `[~]` row to `[x]` without the real drag or manual 
 - [~] Permission-free drag watcher, fan/ring wheel, drop-to-commit (external harness
   drives fan-mode Finder drags through Shift/Command/Control; mid-drag trigger switching
   manual)
-- [x] **Fan wheel**: one surface, 480 pt petal flower (`fanInner 84`, `fanOuter 240`),
-  no backdrop plate, matte graphite petals with thin grey borders, muted amber selected
-  petal, sentence-case icon + label content, dynamic hub with filename/format/size, mode
-  rebuild. Verified through `Zest wheel` renders, `uitest` (seam separation + label
-  fit), `selftest`, and the external harness (12/12).
+- [x] **Fan wheel**: one surface, 384 pt petal flower (`fanInner 68`, `fanOuter 192`),
+  no backdrop plate, graphite-glass petals with lit edges and subtle depth, muted amber
+  selected petal, sentence-case icon + label content (no truncation at the compact
+  size), dynamic hub with filename/format/size, mode rebuild. Verified through
+  `Zest wheel` renders, `uitest` (seam separation + label fit), `selftest`, and the
+  external harness (12/12).
 - [~] **Settings**: compact 480×620 layout, custom orange pill tabs, flat cards,
   search/sidebar Formats, compatibility tables, Folders, centered About with **no
   unlock/free-trial UI**; all five tabs and every format page build (`uitest`), all five
@@ -734,7 +748,7 @@ manual run. Do not promote a `[~]` row to `[x]` without the real drag or manual 
   check (the engine paths are covered by selftest and a shipping-bundle run)
 - [~] **App bundle**: icon present, `CFBundleIconFile` set, ad-hoc signed, no broken tools;
   `build.sh` validates candidates and the About page loads the real icon. Rebuilt after
-  the final fan pass, launched, and harness-verified (log line `radius=162 outer=240`).
+  the compact pass, launched, and harness-verified (log line `radius=130 outer=192`).
 - [~] Finder Services: handler opens the wheel and LaunchServices lists
   `Convert with Zest` (`public.item` → `convertWithZest`); invoking it from the Finder
   menu is manual
@@ -796,8 +810,12 @@ where history and source disagree, the source wins.
   cubics + elliptical caps, single source of truth for drawing, labels, and hit-testing).
   Went through several material iterations — grey glass, glowing multihue glass
   (pixel-sampled from an operator mock), which the operator then rejected.
-- **Final (2026-10-24):** medium 84/240 radii at the operator's request ("medium, not
-  big") and the matte graphite material with per-count chord fill. The tangerine app
+- **Final (2026-10-24):** the graphite material with per-count chord fill, first at
+  medium 84/240 radii, then compact 68/192 (~80% diameter) at the operator's request.
+  The compact pass moved the label anchor to 0.73 of the petal length and laddered the
+  label font to an 8 pt floor so no label truncates. A final pass added the smoked-glass
+  cues (neck pooling, cap light pool, sheen, lit edges) at low opacity after the
+  operator asked for a glass finish. The tangerine app
   (`/Applications/Tangerine.app`, report at `RE/TANGERINE.md`) was also evaluated as a
   design source — its flat charcoal wheel was considered and superseded by the
   operator's graphite mock; its tool inventory had already informed the Zest catalog.
