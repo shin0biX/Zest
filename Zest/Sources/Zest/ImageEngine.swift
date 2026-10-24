@@ -41,7 +41,12 @@ enum ImageEngine {
         for key in [kCGImagePropertyTIFFDictionary, kCGImagePropertyExifDictionary,
                     kCGImagePropertyIPTCDictionary, kCGImagePropertyGPSDictionary,
                     kCGImagePropertyPNGDictionary] {
-            if let dict = props[key] { carried[key] = dict }
+            if var dict = props[key] as? [CFString: Any] {
+                // Stale pixel facts would mislabel rotated or resized output.
+                dict.removeValue(forKey: kCGImagePropertyExifPixelXDimension)
+                dict.removeValue(forKey: kCGImagePropertyExifPixelYDimension)
+                carried[key] = dict
+            }
         }
         if let dpi = props[kCGImagePropertyDPIWidth] { carried[kCGImagePropertyDPIWidth] = dpi }
         if let dpi = props[kCGImagePropertyDPIHeight] { carried[kCGImagePropertyDPIHeight] = dpi }

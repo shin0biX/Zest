@@ -580,8 +580,11 @@ enum CLI {
             // so preservation holds on any Mac a DMG lands on.
             let tagged = try ToolRunner.run(tool: "metadata", inputs: [png],
                                             params: ["values": #"{"Title":"Zest Meta","Author":"Bench"}"#])
+            // Resize on the way through: stale pixel tags must not survive.
+            var params = ["preserveMetadata": "1", "maxDimension": "800"]
+            params["imageCompression"] = "balanced"
             let outs = try Convert.perform(tagged[0], to: format("jpg", for: .image),
-                                           params: ["preserveMetadata": "1"])
+                                           params: params)
             guard let src = CGImageSourceCreateWithURL(outs[0] as CFURL, nil),
                   let props = CGImageSourceCopyPropertiesAtIndex(src, 0, nil)
                       as? [CFString: Any],
@@ -591,6 +594,17 @@ enum CLI {
             guard tiff[kCGImagePropertyTIFFImageDescription] as? String == "Zest Meta",
                   tiff[kCGImagePropertyTIFFArtist] as? String == "Bench" else {
                 throw ZestError("tags did not survive the conversion: \(tiff)")
+            }
+            if let exif = props[kCGImagePropertyExifDictionary] as? [CFString: Any],
+               let taggedW = exif[kCGImagePropertyExifPixelXDimension] as? Int,
+               let taggedH = exif[kCGImagePropertyExifPixelYDimension] as? Int,
+               let realW = props[kCGImagePropertyPixelWidth] as? Int,
+               let realH = props[kCGImagePropertyPixelHeight] as? Int {
+                guard realW <= 800 else { throw ZestError("resize was not applied") }
+                guard taggedW == realW, taggedH == realH else {
+                    throw ZestError("pixel tags describe \(taggedW)×\(taggedH) "
+                                    + "but the image is \(realW)×\(realH)")
+                }
             }
             return outs
         }
