@@ -16,3 +16,6 @@ RE/
 
 # Local distribution artifacts (Zest.dmg)
 dist/
+
+# Local agent handoff doc — kept out of the repo
+AGENTS.md
