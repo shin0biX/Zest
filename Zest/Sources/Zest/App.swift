@@ -24,6 +24,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         rebuildMenu()
 
+        // First run on a fresh install: walk the new user through the drag →
+        // modifier → pick flow. The window also stays reachable from
+        // Settings → About for anyone who wants it again.
+        if !Prefs.welcomeSeen {
+            WelcomeWindow.shared.show()
+        }
+
         watcher.onArm = { [weak self] context, mode in
             guard let self else { return }
             if self.overlay.isOpen { self.overlay.close() }
@@ -100,17 +107,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         menu.addItem(header)
         menu.addItem(.separator())
 
-        let preview = NSMenuItem(title: "Preview Wheel", action: #selector(previewWheel), keyEquivalent: "p")
-        preview.target = self
-        menu.addItem(preview)
-
         let open = NSMenuItem(title: "Convert Files…", action: #selector(openFiles), keyEquivalent: "o")
         open.target = self
         menu.addItem(open)
-
-        let welcome = NSMenuItem(title: "Getting Started…", action: #selector(showWelcome), keyEquivalent: "")
-        welcome.target = self
-        menu.addItem(welcome)
 
         let settings = NSMenuItem(title: "Settings…", action: #selector(showSettings), keyEquivalent: ",")
         settings.target = self
@@ -133,10 +132,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         statusItem?.menu = menu
         statusItem?.button?.toolTip = "Zest — drag files, then tap \(Prefs.convertKey.title)"
-    }
-
-    @objc private func previewWheel() {
-        overlay.presentDemo()
     }
 
     @objc private func openFiles() {

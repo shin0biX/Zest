@@ -213,6 +213,7 @@ enum Prefs {
             "terminalApp": TerminalChoice.terminal.rawValue,
             "launchAtLogin": false,
             "welcomeSeen": false,
+            "verboseLog": false,
             "format.preserveMetadata": true,
             "format.imageCompression": "balanced",
             "format.imageSize": ImageSizePreset.original.rawValue,
@@ -290,6 +291,14 @@ enum Prefs {
     static var welcomeSeen: Bool {
         get { defaults.object(forKey: "welcomeSeen") as? Bool ?? false }
         set { defaults.set(newValue, forKey: "welcomeSeen") }
+    }
+
+    /// Drag-trace logging for development and the external harness. Release
+    /// builds stay quiet unless this is set (the harness sets it for its
+    /// run). Errors always log.
+    static var verboseLog: Bool {
+        get { defaults.object(forKey: "verboseLog") as? Bool ?? false }
+        set { defaults.set(newValue, forKey: "verboseLog") }
     }
 
     // MARK: Per-format defaults

@@ -381,7 +381,8 @@ surface selects.
 - Settings: general window builds and reflects collision prefs; **every tab and every
   format page builds**.
 - Services: `convertWithZest` opens the wheel with one image and the right kind.
-- Status item: icon, Preview Wheel, Settings…, Quit are present.
+- Status item: icon, Convert Files…, Settings…, Quit are present; the consumer menu
+  no longer carries Preview Wheel or Getting Started (uitest asserts their absence).
 - Actions: Copy Path writes the clipboard.
 
 Limits: no synthetic mouse events, no Finder drag session, no AirDrop, no modal tool
@@ -555,9 +556,14 @@ overlay.
     pages are untested at runtime.** LaunchServices lists the service; `uitest` proves
     the handler and every settings page builds. The live Settings window has been checked;
     a tab-by-tab persistence review is still manual.
-13. **The Welcome window is not auto-shown at launch.** It is deliberately menu/About-only
-    so the Finder drag harness stays deterministic. If first-run auto-show is wanted, add
-    an explicit opt-in and update the harness launch path.
+13. **The Welcome window auto-shows once on a fresh install** (`!Prefs.welcomeSeen` at
+    launch, 2026-10-24 — the operator wanted real users onboarded). It stays reachable
+    from Settings → About. `uitest` forces `welcomeSeen = true` around its app-delegate
+    check so the suite never presents it; the harness machine already has the flag set.
+    Quiet-mode logging: release builds write only the launch line and errors; the drag
+    trace (Drag/Wheel/Choice/Drop) needs `defaults write com.zest.app verboseLog -bool
+    true` (debug builds log it always). `Harness/run.sh` sets that flag and restores it
+    via an EXIT trap — keep the trap working (no `exec` in run.sh).
 14. **Launch at login may need approval** for an ad-hoc signed app. Settings alerts and
     reverts; test on the target Mac.
 15. **Video redaction is one static rectangle for one time range.** There is no motion
@@ -578,12 +584,12 @@ overlay.
 
 - Launch `Zest.app`. Confirm the wand-and-stars status item, no Dock icon, no window on
   launch.
-- Open **Getting Started…** from the menu; step through all five pages. Confirm the fan
+- Open **Getting Started…** via Settings → About; step through all five pages. Confirm the fan
   previews are readable and the keycaps match the configured modifiers.
 - Open **Settings**; change every popup, toggle sound/keyboard control, reopen, confirm
   persistence. Build every Formats page (the automated test does this; verify visually).
-- Open **Preview Wheel** from the status menu; hover petals in the fan, tap
-  Shift/Command/Control, close with Escape and by clicking outside.
+- Run `Zest wheel` or the Convert Files… picker to exercise the wheel outside a drag;
+  hover petals in the fan, tap Shift/Command/Control, close with Escape.
 - With a real Finder drag, tap **Command** then **Control** mid-drag; confirm the fan
   rebuilds to tools/actions while staying anchored. Release in the center and outside the
   wheel; both must cancel cleanly.

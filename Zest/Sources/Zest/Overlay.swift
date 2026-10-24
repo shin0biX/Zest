@@ -49,16 +49,16 @@ final class OverlayController {
     func handleDisarm() {
         guard panel != nil else { return }
         guard isPointerOverWheel else {
-            Log.write("Wheel disarm outside")
+            Log.verbose("Wheel disarm outside")
             close()
             return
         }
         closeWork?.cancel()
-        Log.write("Wheel disarm on wheel; waiting for drop")
+        Log.verbose("Wheel disarm on wheel; waiting for drop")
         let work = DispatchWorkItem { [weak self] in
             guard let self else { return }
             self.closeWork = nil
-            if self.panel != nil { Log.write("Wheel disarm timeout") }
+            if self.panel != nil { Log.verbose("Wheel disarm timeout") }
             self.close()
         }
         closeWork = work
@@ -173,7 +173,7 @@ final class OverlayController {
         let ids = ring?.choices.map(\.id).joined(separator: ",") ?? ""
         let rings = wheel.rings.map { "\($0.mode.rawValue):\($0.choices.count)" }
             .joined(separator: ",")
-        Log.write("Wheel mode=\(wheel.emphasis.rawValue) count=\(ring?.choices.count ?? 0) "
+        Log.verbose("Wheel mode=\(wheel.emphasis.rawValue) count=\(ring?.choices.count ?? 0) "
             + "anchor=\(Int(anchor.x)),\(Int(anchor.y)) "
             + "screen=\(Int(screen.frame.width))x\(Int(screen.frame.height)) "
             + "radius=\(Int(ring?.mid ?? 0)) outer=\(Int(wheel.discRadius)) "
@@ -220,7 +220,7 @@ final class OverlayController {
     private func commit(_ choice: WheelChoice?, mode: WheelMode? = nil) {
         let ctx = context
         let resolved = mode ?? self.mode
-        Log.write("Choice \(choice?.id ?? "cancel") mode=\(resolved.rawValue)")
+        Log.verbose("Choice \(choice?.id ?? "cancel") mode=\(resolved.rawValue)")
         close()
         guard let ctx, let choice else { return }
         onCommit?(ctx, choice, resolved)
@@ -494,7 +494,7 @@ final class WheelView: NSView {
     // MARK: Drag destination
 
     override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation {
-        Log.write("Drop enter")
+        Log.verbose("Drop enter")
         hover(at: convert(sender.draggingLocation, from: nil))
         return .copy
     }
@@ -505,7 +505,7 @@ final class WheelView: NSView {
     }
 
     override func draggingExited(_ sender: NSDraggingInfo?) {
-        Log.write("Drop exit")
+        Log.verbose("Drop exit")
         hovered = nil
         needsDisplay = true
     }
@@ -513,7 +513,7 @@ final class WheelView: NSView {
     override func prepareForDragOperation(_ sender: NSDraggingInfo) -> Bool { true }
 
     override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
-        Log.write("Drop perform")
+        Log.verbose("Drop perform")
         let point = convert(sender.draggingLocation, from: nil)
         hover(at: point)
         onPick?(choice(at: point), hoveredMode ?? emphasis)

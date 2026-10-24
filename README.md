@@ -20,6 +20,9 @@ No windows, no uploads, no accounts. Everything runs on your Mac.
 The central hub shows the file you're holding — icon, filename, format, and size. Drop
 on the hub (or off the wheel) to cancel. Results are saved beside the originals, always.
 
+The first launch opens a short Getting Started walkthrough — reopen it any time from
+Settings → About.
+
 ## The wheel
 
 **Concentric rings** *(the default)* — every surface visible at once, floating over the
@@ -156,11 +159,12 @@ swift build
 .build/debug/Zest selftest        # engine suite (structural verification)
 .build/debug/Zest uitest          # in-process UI suite, no permissions needed
 ./build.sh                        # release bundle
-./Harness/run.sh all              # 12 end-to-end Finder-drag scenarios (needs Accessibility)
+./Harness/run.sh all              # 12 end-to-end Finder-drag scenarios (needs Accessibility;
 ```
 
 The [external harness](Zest/Harness/) drives real Finder drags through the shipped app
-and verifies outputs structurally — every commit in this repo passed it. See
+and verifies outputs structurally — every commit in this repo passed it (it enables
+the app's drag-trace logging for its run and restores quiet mode after). See
 [AGENTS.md](AGENTS.md) for the full architecture, design decisions, and history.
 
 ## License

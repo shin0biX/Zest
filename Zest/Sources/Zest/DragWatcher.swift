@@ -59,7 +59,7 @@ final class DragWatcher {
                 anchor = NSEvent.mouseLocation
                 armed = nil
                 lastChange = change
-                Log.write("Drag start files=\(found.count) anchor=\(Int(anchor.x)),\(Int(anchor.y))")
+                Log.verbose("Drag start files=\(found.count) anchor=\(Int(anchor.x)),\(Int(anchor.y))")
 
                 // A trigger held before the drag started also arms the wheel.
                 if let mode = mode(for: flags) {

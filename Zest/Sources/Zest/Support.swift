@@ -9,6 +9,17 @@ enum Log {
 
     private static let lock = NSLock()
 
+    /// Drag-trace lines. Debug builds log them; release builds stay quiet
+    /// unless `com.zest.app verboseLog -bool true` is set (the external
+    /// harness flips it on for its run). Errors use `write` directly.
+    static func verbose(_ message: String) {
+        #if DEBUG
+        write(message)
+        #else
+        if Prefs.verboseLog { write(message) }
+        #endif
+    }
+
     static func write(_ message: String) {
         lock.lock(); defer { lock.unlock() }
         let df = DateFormatter()

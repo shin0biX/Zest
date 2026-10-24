@@ -545,6 +545,11 @@ enum UITest {
         }
 
         harness.check("Status item: menu is wired") {
+            // Keep the first-run Welcome from presenting while the suite
+            // drives a real app delegate.
+            let seenBefore = Prefs.welcomeSeen
+            Prefs.welcomeSeen = true
+            defer { Prefs.welcomeSeen = seenBefore }
             let delegate = AppDelegate()
             delegate.applicationDidFinishLaunching(
                 Notification(name: NSApplication.didFinishLaunchingNotification))
@@ -559,7 +564,9 @@ enum UITest {
             defer { NSStatusBar.system.removeStatusItem(item) }
             try expect(item.button?.image != nil, "status item has no icon")
             let titles = item.menu?.items.map(\.title) ?? []
-            try expect(titles.contains("Preview Wheel"), "menu is missing Preview Wheel")
+            try expect(titles.contains("Convert Files…"), "menu is missing Convert Files")
+            try expect(!titles.contains("Preview Wheel"), "menu still shows Preview Wheel")
+            try expect(!titles.contains("Getting Started…"), "menu still shows Getting Started")
             try expect(titles.contains("Settings…"), "menu is missing Settings")
             try expect(titles.contains("Quit Zest"), "menu is missing Quit")
         }
