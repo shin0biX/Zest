@@ -40,7 +40,7 @@ modifier, and pick a target from the wheel. This is a personal build, not a dist
   `Zest/Harness/dragtest.swift`. Everything below was verified on this exact tree.
 - **Verified 2026-10-24 on this tree:**
   - `swift build` — clean, zero warnings.
-  - `selftest` — **93 passed · 0 failed · 0 skipped**.
+  - `selftest` — **95 passed · 0 failed** (+1 skipped: OGG, no libvorbis here).
   - `uitest` — **29 passed · 0 failed** (includes fan seam-separation and label-fit
     checks).
   - `./build.sh` — bundle rebuilt: `AppIcon.icns` present, `CFBundleIconFile` set,
@@ -57,7 +57,9 @@ modifier, and pick a target from the wheel. This is a personal build, not a dist
   build (`uitest`), the live window confirmed titlebar, traffic lights, orange pill
   tabs, corrected checkmarks, glass vibrancy, and the real About icon. Tab-by-tab
   persistence review remains manual.
-- **Settings audit done, defects on record** — see *Open issues*; nothing fixed yet.
+- **Settings audit: all five defects fixed and verified** (see *Open issues* for the
+  evidence), including a bonus find — OGG output was impossible on this host (no
+  libvorbis) and is now engine-gated from the wheel.
 - **Media tools verified** through the shipping bundle binary; selftest asserts redaction
   pixels and both audio→video streams.
 - **Stale debris:** `Zest/Zest 2.app` is an untracked older bundle containing binaries
@@ -467,17 +469,15 @@ Mechanics:
 
 ## Open issues
 
-### Settings audit (executed 2026-10-24; re-verified the same afternoon; nothing fixed yet)
+### Settings audit (executed 2026-10-24; **all defects fixed the same day**)
 
 Every Formats control was traced from its `Settings.swift` setter through
 `Prefs.conversionParams(for:)` into the engine, and the drivable ones were executed.
-Afternoon re-verification: JPG quality and image size were driven through the **real
-drag path** (harness `basic` with `format.quality.jpg` best → 24,921 B vs smallest →
-19,841 B; `format.imageSize.jpg px720` → exactly 720×450), GIF knobs re-proven
-(320×180 @ 5 fps), all five tabs re-rendered, and — because **exiftool is now
-installed** on this host — preserve-metadata **works here** (Title/Author survive
-PNG→JPG). Defect 2 below is therefore host-conditional: DMG users without exiftool
-still silently lose tags. Launch-at-login probed live: `requiresApproval` (ad-hoc).
+Afternoon re-verification (pre-fix): JPG quality and image size were driven through the
+**real drag path** (harness `basic` with `format.quality.jpg` best → 24,921 B vs
+smallest → 19,841 B; `format.imageSize.jpg px720` → exactly 720×450), GIF knobs
+re-proven (320×180 @ 5 fps), all five tabs re-rendered. Launch-at-login probed live:
+`requiresApproval` (ad-hoc caveat, unchanged).
 
 **Proven by execution:**
 
@@ -496,24 +496,28 @@ still silently lose tags. Launch-at-login probed live: `requiresApproval` (ad-ho
 - PDF layout, read from the **source** extension so the DOCX/Pages page drives DOCX→PDF
 - EPUB layout with the PDF→EPUB fallback to the EPUB page's key
 
-**Broken or misleading:**
+**All five defects fixed 2026-10-24 (verified by execution; selftest 95):**
 
-1. **Compression Balanced/Strong does nothing.** The control writes
-   `Prefs.imageCompression`, `conversionParams` copies it to `params["imageCompression"]`,
-   and no engine reads that key. Wire it or delete the control.
-2. **Preserve metadata is a silent no-op here.** It defaults to on, but
-   `ImageEngine.convert` carries tags only through `ToolFinder.exiftool`, and exiftool is
-   not installed on this host. Verified: a JPEG with `UserComment=ZestMetaProbe`
-   converted to PNG comes back with `UserComment=nil`, no error. The **Metadata tool** is
-   unaffected — it writes tags natively through ImageIO — so the fix is to reuse that
-   path instead of depending on an external binary.
-3. **Dead controls on specific formats:** video quality on AVI and WMV (hardcoded
-   `-q:v 4`), audio bitrate on OGG (hardcoded `-q:a 5`), audio bit depth 32-bit on AIFF
-   (silently becomes 24-bit).
-4. **EPUB→PDF has no PDF-layout row** (only DOCX/Pages do), so EPUB sources always take
-   the global default.
-5. **`Zest convert` ignores every format default** — empty params, so headless output
-   never matches a drag.
+1. **Compression Balanced/Strong is wired.** `ImageEngine.convert` consumes
+   `imageCompression`: `strong` scales lossy quality by 0.75. Selftest check
+   "Strong image compression shrinks output" proves the size drop. (No effect on
+   lossless PNG/TIFF — quality does not apply there.)
+2. **Preserve metadata is native.** Tags (TIFF/EXIF/IPTC/GPS/PNG dicts + DPI) travel
+   through ImageIO properties at encode time — no exiftool, works on any Mac a DMG
+   lands on; orientation/dimensions are sanitised. Selftest check "Metadata carries
+   natively across conversion" proves Title/Author survive PNG→JPG.
+3. **Format-specific controls live:** AVI/WMV video quality maps the CRF preset onto
+   mpeg4/wmv2 `-q:v` (probe: best 168,506 vs smallest 139,096 B); OGG bitrate uses
+   `-b:a`; AIFF honours all depths (`pcm_s32be` verified for 32-bit). **Bonus defect
+   found while fixing:** this host's Homebrew ffmpeg has **no libvorbis**, so OGG
+   output never worked here at all; OGG is now gated behind
+   `Capability.vorbisEncode` (cached encoder probe) and selftest skips WAV→OGG with a
+   message on such hosts — the wheel never offers what the local encoder cannot do.
+4. **EPUB's Settings page has a PDF-layout row** (same popup as DOCX/Pages), writing
+   `format.pdfLayout.epub`, which `Planner` already reads for EPUB→PDF.
+5. **`Zest convert` honours format defaults** — the CLI builds
+   `Prefs.conversionParams(for:)` plus source-keyed PDF/EPUB layout, so headless output
+   matches a drag (probe: JPG best 118,458 vs smallest 101,118 B through the CLI).
 
 General settings all reach something: launch at login, sound/haptics (one toggle gates
 both), Float behaviour, Terminal choice, collision policy, keyboard control, wheel style.
@@ -543,14 +547,11 @@ overlay.
 7. **Document layouts are applied, with limits.** `pdfLayout` selects flowing text versus
    editable rich paragraphs; "editable" still means a CoreText-rendered PDF, not a
    tagged or reflowable document. `epubLayout=fixed` produces page images with
-   `pre-paginated` metadata, so the text is not selectable or reflowable. Image
-   "compression" (Balanced/Strong) is a **dead control** — see the settings audit.
-8. **Metadata preservation depends on ExifTool, which is not installed here.** Tags are
-   copied after re-encode only when `ToolFinder.exiftool` resolves; otherwise the copy is
-   skipped silently and the conversion drops EXIF/GPS/IPTC. Verified with a `UserComment`
-   tag: present on the source, absent on the output. Orientation and pixel-dimension tags
-   are not sanitised either. The Metadata tool itself is fine — it writes tags natively
-   through ImageIO.
+   `pre-paginated` metadata, so the text is not selectable or reflowable.
+8. **Metadata preservation is native but best-effort.** TIFF/EXIF/IPTC/GPS/PNG
+   dictionaries and DPI carry across image conversions through ImageIO; maker notes and
+   exotic blocks may not. Orientation and pixel dimensions are sanitised so rotated or
+   resized output is not mislabelled.
 9. **SVG fallback quality depends on the host.** `rsvg-convert` is preferred; this Mac
    uses `qlmanage -t`.
 10. **No media tools are bundled on this host.** `ffmpeg`, `ffprobe`, and `cwebp` resolve
@@ -576,9 +577,9 @@ overlay.
 15. **Video redaction is one static rectangle for one time range.** There is no motion
     tracking, no multiple regions, and no per-frame boxes. Audio redaction is one range
     per pass; `cropVideo` remains a coordinate form, not a timeline.
-16. **`convert` has no per-conversion parameters and ignores the format defaults.**
-    `Convert.perform` receives empty params from the CLI, so headless output never matches
-    what a drag produces. Use `tool` for quality/DPI/size controls.
+16. **`convert` honours the format defaults** (fixed 2026-10-24): the CLI passes
+    `Prefs.conversionParams(for:)` plus source-keyed layout prefs. There is still no
+    per-invocation override on the CLI — use `tool` with `--params` for that.
 17. **GZIP naming depends on input shape.** A single file becomes `<name>.gz`; a folder or
     multiple inputs become `<name>.tar.gz`. Extraction handles both.
 18. **The fan preview in Welcome is capped at eight petals** (half scale) for readability;
@@ -653,10 +654,10 @@ overlay.
   document opens at the bottom of a taller page because AppKit uses a bottom-left origin.
   Keep the explicit tab widths; 88 pt truncates "Compatibility".
 - Keep formats/tools truthful: gate on `Capability`/`ToolFinder`, hide what cannot run.
-- **Every settings control needs a consumer.** A popup that writes a key no engine reads is
-  worse than a missing popup: `imageCompression` is the existing example (see the settings
-  audit). When adding a default, add it to `Prefs.conversionParams(for:)`, consume it in
-  the engine, and cover it with a check.
+- **Every settings control needs a consumer.** A popup that writes a key no engine reads
+  is worse than a missing popup — `imageCompression` was the historical example until it
+  was wired. When adding a default, add it to `Prefs.conversionParams(for:)`, consume it
+  in the engine, and cover it with a check.
 - **Validate tools by execution, not existence.** `ToolFinder.resolve` runs the version
   flag with a 2 s timeout and caches the result; `build.sh` must apply the same probe
   before bundling. A present-but-trapping binary must never shadow Homebrew.
@@ -710,7 +711,8 @@ overlay.
 - Video redaction converts the normalized rect to pixels once, clamps it to the frame, and
   rounds width/height down to even values for yuv420p. Keep the overlay filter's `enable`
   range aligned with the requested start/end; do not apply the box to the whole clip.
-- `selftest` currently reports 93 checks and `uitest` reports 29; add a check whenever a
+- `selftest` currently reports 95 checks plus one conditional OGG check that skips with
+  a message on hosts without libvorbis, and `uitest` reports 29; add a check whenever a
   converter, engine option, or UI path is added, and keep the structural verifiers.
 
 ## Coverage checklist
@@ -808,8 +810,7 @@ manual run. Do not promote a `[~]` row to `[x]` without the real drag or manual 
 6. **Remaining manual rows:** AirDrop, Float drag-out/double-click, Finder Services menu
    invocation, and keyboard navigation.
 7. **Optional feature work** — see *Open issues*, especially fan pagination, image
-   compression strength, app-wide glass, video redaction tracking, and the ExifTool
-   orientation follow-up.
+   app-wide glass, and video redaction tracking.
 8. **Update this file** with what the harness and manual run proved.
 
 ## History
