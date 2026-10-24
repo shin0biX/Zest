@@ -1088,6 +1088,20 @@ final class WheelView: NSView {
                              .foregroundColor: NSColor(srgbRed: 0.631, green: 0.631,
                                                        blue: 0.655, alpha: 1),
                              .paragraphStyle: para])
+
+        // The hovered choice explains itself: its hint rides under the file
+        // metadata instead of cluttering the petal.
+        if let hint = hoveredChoice?.hint, !hint.isEmpty {
+            let hintFont = NSFont.systemFont(ofSize: max(6, 8.5 * s), weight: .medium)
+            let hintHeight = hintFont.pointSize * 1.3
+            (hint as NSString).draw(
+                in: NSRect(x: center.x - fanInner + 12 * s,
+                           y: center.y - 34 * s - hintHeight / 2,
+                           width: 2 * fanInner - 24 * s, height: hintHeight),
+                withAttributes: [.font: hintFont,
+                                 .foregroundColor: NSColor(calibratedWhite: 1, alpha: 0.55),
+                                 .paragraphStyle: para])
+        }
     }
 
     private func drawContent(_ choice: WheelChoice, ring: WheelRing,
@@ -1188,8 +1202,10 @@ final class WheelView: NSView {
                              .foregroundColor: NSColor(calibratedWhite: 1, alpha: 0.92),
                              .paragraphStyle: para])
 
+        let hoveredHint = hoveredChoice?.hint ?? ""
         let hint = preview ? "Hover to explore"
-            : (demo ? "Click to pick" : (hovered == nil ? "Release to cancel" : "Release to apply"))
+            : (!hoveredHint.isEmpty ? hoveredHint
+               : (demo ? "Click to pick" : (hovered == nil ? "Release to cancel" : "Release to apply")))
         (hint as NSString).draw(
             in: NSRect(x: center.x - 74, y: center.y - 18, width: 148, height: 14),
             withAttributes: [.font: NSFont.systemFont(ofSize: 10, weight: .regular),
