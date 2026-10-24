@@ -1278,7 +1278,7 @@ final class SettingsWindow: NSWindowController, NSSearchFieldDelegate {
                     Prefs.setGIF(fps: Prefs.gifFPS(for: ext), width: widths[index], for: ext)
                 }))
         }
-        if ["docx", "pages"].contains(ext) {
+        if ["docx", "pages", "epub"].contains(ext) {
             let layouts = [("Editable paragraphs", "editable"), ("Flowing text", "flowing")]
             rows.append(detailRow("PDF layout", control: popup(
                 layouts.map(\.0),

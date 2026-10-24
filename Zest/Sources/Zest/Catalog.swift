@@ -161,6 +161,7 @@ enum Catalog {
             if sources.count == 1, sources.contains(fmt.ext) { return false }
             if kind == .image, fmt.ext == "avif", !Capability.avifEncode { return false }
             if kind == .image, fmt.ext == "webp", !Capability.webpEncode { return false }
+            if fmt.ext == "ogg", !Capability.vorbisEncode { return false }
             if kind == .archive, sources.contains("rar"), !Capability.rarInput { return false }
             return true
         }

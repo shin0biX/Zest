@@ -498,6 +498,15 @@ enum Prefs {
 
 enum Capability {
     static var ffmpeg: Bool { ToolFinder.ffmpeg != nil }
+    /// Some ffmpeg builds ship without libvorbis (this host's Homebrew does),
+    /// which makes OGG output impossible — the wheel must not offer it then.
+    static let vorbisEncode: Bool = {
+        guard let ffmpeg = ToolFinder.ffmpeg,
+              let list = try? Shell.run(ffmpeg, ["-hide_banner", "-encoders"]) else {
+            return false
+        }
+        return list.contains("libvorbis")
+    }()
     static var webpEncode: Bool { ToolFinder.cwebp != nil || ffmpeg }
     static var avifEncode: Bool { ffmpeg || ImageSupport.canEncode("avif") }
     static var officeExport: Bool { ToolFinder.soffice != nil }

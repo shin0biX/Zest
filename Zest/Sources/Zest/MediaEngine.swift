@@ -35,11 +35,11 @@ enum MediaEngine {
                                    "-c:a", "libopus", "-b:a", audioBitrate, out.path])
         case "avi":
             try Shell.run(ffmpeg, ["-y", "-i", input.path] + videoFilter + [
-                                   "-c:v", "mpeg4", "-q:v", "4",
+                                   "-c:v", "mpeg4", "-q:v", legacyQuality(crf),
                                    "-c:a", "libmp3lame", "-q:a", "4", out.path])
         case "wmv":
             try Shell.run(ffmpeg, ["-y", "-i", input.path] + videoFilter + [
-                                   "-c:v", "wmv2", "-q:v", "4",
+                                   "-c:v", "wmv2", "-q:v", legacyQuality(crf),
                                    "-c:a", "wmav2", "-b:a", audioBitrate, out.path])
         case "gif":
             return [try makeGIF(input, to: out,
@@ -53,6 +53,22 @@ enum MediaEngine {
             throw ZestError("No media converter for .\(fmt.ext)")
         }
         return [out]
+    }
+
+    /// mpeg4/wmv2 have no CRF; map the requested CRF onto their `-q:v`
+    /// scale (2 = near-lossless … 12 = rough) so the video-quality preset
+    /// reaches AVI and WMV output too.
+    private static func legacyQuality(_ crf: Int) -> String {
+        let q = 2 + Int((Double(crf - 18) * 4.0 / 14.0).rounded())
+        return String(min(12, max(2, q)))
+    }
+
+    static func pcmBE(_ bitDepth: String) -> String {
+        switch bitDepth {
+        case "24": return "pcm_s24be"
+        case "32": return "pcm_s32be"
+        default: return "pcm_s16be"
+        }
     }
 
     static func crfForPreset() -> Int {
@@ -98,9 +114,11 @@ enum MediaEngine {
         case "m4a", "aac": args += ["-c:a", "aac", "-b:a", rate]
         case "wav": args += ["-c:a", pcm]
         case "flac": args += ["-c:a", "flac", "-compression_level", "5"]
-        case "ogg": args += ["-c:a", "libvorbis", "-q:a", "5"]
+        case "ogg": args += ["-c:a", "libvorbis", "-b:a", rate]
         case "opus": args += ["-c:a", "libopus", "-b:a", rate]
-        case "aiff": args += ["-c:a", bitDepth == "16" ? "pcm_s16be" : "pcm_s24be"]
+        // AIFF is big-endian and ffmpeg supports all three depths, so a
+        // 32-bit request really produces 32-bit instead of silently 24.
+        case "aiff": args += ["-c:a", Self.pcmBE(bitDepth)]
         case "wma": args += ["-c:a", "wmav2", "-b:a", rate]
         case "caf": args += ["-c:a", pcm]
         default: args += ["-c:a", "aac", "-b:a", rate]

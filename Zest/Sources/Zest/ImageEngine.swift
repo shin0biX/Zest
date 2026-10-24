@@ -14,17 +14,38 @@ enum ImageEngine {
         var image = try load(input)
         image = try ImageOps.apply(image, params: params)
         let out = Naming.output(for: input, ext: fmt.ext)
-        let quality = Double(params["quality"] ?? "")
+        var quality = Double(params["quality"] ?? "")
             ?? defaultQuality(for: fmt.ext)
-        try encode(image, to: out, ext: fmt.ext, quality: quality)
-        if params["preserveMetadata"] != "0", let exiftool = ToolFinder.exiftool {
-            // ImageIO re-encodes pixels; ExifTool carries the metadata across
-            // best-effort. Missing ExifTool is not an error.
-            _ = try? Shell.run(exiftool, ["-q", "-q", "-overwrite_original",
-                                          "-TagsFromFile", input.path,
-                                          "-all:all", out.path])
+        if params["imageCompression"] == "strong" {
+            quality = max(0.05, quality * 0.75)
         }
+        // Metadata travels natively through ImageIO — no external binary, so
+        // preservation works on any Mac, not just hosts with exiftool.
+        let properties = params["preserveMetadata"] != "0"
+            ? metadataProperties(from: input)
+            : nil
+        try encode(image, to: out, ext: fmt.ext, quality: quality,
+                   properties: properties)
         return [out]
+    }
+
+    /// The image dictionaries worth carrying across a conversion, with the
+    /// per-pixel facts (dimensions, orientation) removed so a rotated or
+    /// resized output is not mislabelled by stale tags.
+    static func metadataProperties(from url: URL) -> [CFString: Any]? {
+        guard let source = CGImageSourceCreateWithURL(url as CFURL, nil),
+              CGImageSourceGetCount(source) > 0,
+              let props = CGImageSourceCopyPropertiesAtIndex(source, 0, nil)
+                  as? [CFString: Any] else { return nil }
+        var carried: [CFString: Any] = [:]
+        for key in [kCGImagePropertyTIFFDictionary, kCGImagePropertyExifDictionary,
+                    kCGImagePropertyIPTCDictionary, kCGImagePropertyGPSDictionary,
+                    kCGImagePropertyPNGDictionary] {
+            if let dict = props[key] { carried[key] = dict }
+        }
+        if let dpi = props[kCGImagePropertyDPIWidth] { carried[kCGImagePropertyDPIWidth] = dpi }
+        if let dpi = props[kCGImagePropertyDPIHeight] { carried[kCGImagePropertyDPIHeight] = dpi }
+        return carried.isEmpty ? nil : carried
     }
 
     static func defaultQuality(for ext: String) -> Double {

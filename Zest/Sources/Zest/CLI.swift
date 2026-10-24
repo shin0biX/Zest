@@ -263,7 +263,13 @@ enum CLI {
                     err("\(kind.title) can't become .\(ext)")
                     return 1
                 }
-                let outputs = try Convert.perform(url, to: fmt)
+                // Headless output now honours the same per-format defaults a
+                // drag uses (quality, size, metadata, bitrate/depth, layouts).
+                var params = Prefs.conversionParams(for: fmt)
+                let src = url.pathExtension.lowercased()
+                if fmt.ext == "pdf" { params["pdfLayout"] = Prefs.pdfLayout(for: src) }
+                if fmt.ext == "epub" { params["epubLayout"] = Prefs.epubLayout(for: src) }
+                let outputs = try Convert.perform(url, to: fmt, params: params)
                 outputs.forEach { out($0.path) }
             }
             return 0
@@ -569,6 +575,37 @@ enum CLI {
 
         // Image engine and image tools.
         harness.check("PNG → JPG") { try Convert.perform(png, to: format("jpg", for: .image)) }
+        harness.check("Metadata carries natively across conversion") {
+            // Tags survive a re-encode through ImageIO alone — no exiftool,
+            // so preservation holds on any Mac a DMG lands on.
+            let tagged = try ToolRunner.run(tool: "metadata", inputs: [png],
+                                            params: ["values": #"{"Title":"Zest Meta","Author":"Bench"}"#])
+            let outs = try Convert.perform(tagged[0], to: format("jpg", for: .image),
+                                           params: ["preserveMetadata": "1"])
+            guard let src = CGImageSourceCreateWithURL(outs[0] as CFURL, nil),
+                  let props = CGImageSourceCopyPropertiesAtIndex(src, 0, nil)
+                      as? [CFString: Any],
+                  let tiff = props[kCGImagePropertyTIFFDictionary] as? [CFString: Any] else {
+                throw ZestError("converted jpg is unreadable")
+            }
+            guard tiff[kCGImagePropertyTIFFImageDescription] as? String == "Zest Meta",
+                  tiff[kCGImagePropertyTIFFArtist] as? String == "Bench" else {
+                throw ZestError("tags did not survive the conversion: \(tiff)")
+            }
+            return outs
+        }
+        harness.check("Strong image compression shrinks output") {
+            let balanced = try Convert.perform(png, to: format("jpg", for: .image),
+                                               params: ["quality": "0.9",
+                                                        "imageCompression": "balanced"])
+            let strong = try Convert.perform(png, to: format("jpg", for: .image),
+                                             params: ["quality": "0.9",
+                                                      "imageCompression": "strong"])
+            guard strong[0].fileSize < balanced[0].fileSize else {
+                throw ZestError("strong compression did not shrink the output")
+            }
+            return strong
+        }
         if ToolFinder.cwebp != nil {
             harness.check("PNG → WebP") { try Convert.perform(png, to: format("webp", for: .image)) }
         } else {
@@ -844,7 +881,17 @@ enum CLI {
             harness.check("MP4 → MOV") { try Convert.perform(samples.mp4, to: format("mov", for: .video)) }
             harness.check("MP4 → MP3") { try Convert.perform(samples.mp4, to: format("mp3", for: .video)) }
             harness.check("MP4 → GIF") { try Convert.perform(samples.mp4, to: format("gif", for: .video)) }
-            harness.check("WAV → FLAC") { try Convert.perform(samples.wav, to: format("flac", for: .audio)) }
+            if Capability.vorbisEncode {
+            harness.check("WAV → OGG honours the bitrate default") {
+                var params = Prefs.conversionParams(for: format("ogg", for: .audio))
+                params["audioBitrate"] = "96k"
+                return try Convert.perform(samples.wav, to: format("ogg", for: .audio), params: params)
+            }
+        } else {
+            harness.skip += 1
+            out("SKIP  WAV → OGG (ffmpeg has no libvorbis)")
+        }
+        harness.check("WAV → FLAC") { try Convert.perform(samples.wav, to: format("flac", for: .audio)) }
             harness.check("Media trim") {
                 try ToolRunner.run(tool: "trim", inputs: [samples.mp4],
                                    params: ["start": "0", "end": "0.5"])
