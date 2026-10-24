@@ -467,10 +467,17 @@ Mechanics:
 
 ## Open issues
 
-### Settings audit (executed 2026-10-24; nothing fixed yet)
+### Settings audit (executed 2026-10-24; re-verified the same afternoon; nothing fixed yet)
 
 Every Formats control was traced from its `Settings.swift` setter through
 `Prefs.conversionParams(for:)` into the engine, and the drivable ones were executed.
+Afternoon re-verification: JPG quality and image size were driven through the **real
+drag path** (harness `basic` with `format.quality.jpg` best → 24,921 B vs smallest →
+19,841 B; `format.imageSize.jpg px720` → exactly 720×450), GIF knobs re-proven
+(320×180 @ 5 fps), all five tabs re-rendered, and — because **exiftool is now
+installed** on this host — preserve-metadata **works here** (Title/Author survive
+PNG→JPG). Defect 2 below is therefore host-conditional: DMG users without exiftool
+still silently lose tags. Launch-at-login probed live: `requiresApproval` (ad-hoc).
 
 **Proven by execution:**
 
