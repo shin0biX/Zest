@@ -26,6 +26,9 @@ modifier, and pick a target from the wheel. This is a personal build, not a dist
 
 ## Current state (authoritative)
 
+- **Default wheel style is rings** (operator choice, 2026-10-24; `Prefs.wheelStyle`
+  registers `.rings` and falls back to it). The fan stays one Settings toggle away.
+  The harness passed **12/12** with rings as the armed default.
 - **Fan wheel: compact graphite glass, fully verified.** 384 pt petal flower
   (`fanInnerRadius 68`, `fanOuterRadius 192` — ~80% of the previous 480 pt disc, at the
   operator's request) around the dynamic file hub. Design details and prohibitions in
@@ -596,7 +599,8 @@ overlay.
 
 - Menu-bar-only, drag files in Finder, tap a modifier to arm a wheel:
   **Shift = formats**, **Command = tools**, **Control = actions**. The app default wheel
-  is the matte graphite **fan** (amber selection); **rings** remains a Settings option.
+  is the **rings** layout; the matte graphite **fan** (amber selection) is a Settings
+  option. Both float panel-free.
 - Format surface: images JPG/PNG/WebP/HEIC/TIFF/AVIF/BMP/GIF + PDF; video
   MP4/MOV/MKV/WebM/AVI/WMV/GIF; audio MP3/M4A/WAV/FLAC/OGG/Opus/AIFF/WMA; PDF→DOCX/
   PAGES/PPTX/XLSX/JPG/PNG/EPUB/TXT/MD; documents; spreadsheets; subtitles; archives
@@ -873,6 +877,7 @@ The constants quoted here are historical; `Overlay.swift` is authoritative.
 ## Style
 
 Swift 5 language mode, AppKit programmatic UI, no storyboards, no third-party packages.
+
 Keep shipped paths complete: unsupported operations must fail with a clear message and be
 hidden from the wheel when the engine is absent. Update this file in the same session as
 any architecture change.

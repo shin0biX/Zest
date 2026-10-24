@@ -208,7 +208,7 @@ enum Prefs {
             "quality": "balanced",
             "keyboardControl": false,
             "appearance": AppearanceStyle.glass.rawValue,
-            "wheelStyle": WheelStyle.fan.rawValue,
+            "wheelStyle": WheelStyle.rings.rawValue,
             "floatBehavior": FloatBehavior.newFloat.rawValue,
             "terminalApp": TerminalChoice.terminal.rawValue,
             "launchAtLogin": false,
@@ -268,7 +268,7 @@ enum Prefs {
     }
 
     static var wheelStyle: WheelStyle {
-        get { WheelStyle(rawValue: defaults.string(forKey: "wheelStyle") ?? "") ?? .fan }
+        get { WheelStyle(rawValue: defaults.string(forKey: "wheelStyle") ?? "") ?? .rings }
         set { defaults.set(newValue.rawValue, forKey: "wheelStyle") }
     }
 

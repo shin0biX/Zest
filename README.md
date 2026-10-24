@@ -19,9 +19,14 @@ No windows, no uploads, no accounts. Everything runs on your Mac.
 The central hub shows the file you're holding — icon, filename, format, and size. Drop
 in a gap or the hub to cancel. Results are saved beside the originals, always.
 
-Two wheel styles ship: the compact **petal fan** (shown above) and classic **concentric
-rings**. Both float over the desktop with no panel behind them — switch in
-Settings → General.
+Two wheel styles ship, both floating over the desktop with no panel behind them:
+
+- **Concentric rings** *(the default)* — all three surfaces visible at once; the
+  modifier you tap brightens its ring while the others stay reachable.
+- **Petal fan** — one surface at a time as a compact flower of graphite-glass petals
+  (shown above); tapping a different modifier rebuilds the fan in place.
+
+Switch styles in Settings → General → Wheel style.
 
 ![Tools wheel](assets/tools.png)
 
