@@ -850,17 +850,17 @@ final class WheelView: NSView {
     private func drawFanPetalShadow(_ petal: FanPetalGeometry, hover: Bool) {
         let shadow = NSShadow()
         if hover {
-            shadow.shadowColor = NSColor(srgbRed: 0.42, green: 0.25, blue: 0.07,
-                                         alpha: 0.38)
-            shadow.shadowBlurRadius = 12 * petal.scale
+            shadow.shadowColor = NSColor(srgbRed: 0.30, green: 0.17, blue: 0.05,
+                                         alpha: 0.50)
+            shadow.shadowBlurRadius = 13 * petal.scale
         } else {
-            shadow.shadowColor = NSColor.black.withAlphaComponent(0.22)
-            shadow.shadowBlurRadius = 10 * petal.scale
+            shadow.shadowColor = NSColor.black.withAlphaComponent(0.55)
+            shadow.shadowBlurRadius = 14 * petal.scale
         }
-        shadow.shadowOffset = NSSize(width: 0, height: -3 * petal.scale)
+        shadow.shadowOffset = NSSize(width: 0, height: -4 * petal.scale)
         NSGraphicsContext.saveGraphicsState()
         shadow.set()
-        NSColor.white.withAlphaComponent(0.01).setFill()
+        NSColor.black.withAlphaComponent(0.70).setFill()
         petal.path.fill()
         NSGraphicsContext.restoreGraphicsState()
     }
@@ -874,40 +874,37 @@ final class WheelView: NSView {
         NSGraphicsContext.saveGraphicsState()
         petal.path.addClip()
         if hover {
-            // Selected: amber glass with white content — the one accent.
+            // Selected: dark amber-brown flowing into the lighter region.
             NSGradient(colors: [
-                NSColor(srgbRed: 0.573, green: 0.322, blue: 0.114, alpha: 0.98),
-                NSColor(srgbRed: 0.678, green: 0.396, blue: 0.153, alpha: 0.98),
-                NSColor(srgbRed: 0.788, green: 0.522, blue: 0.208, alpha: 0.98)
+                NSColor(srgbRed: 0.478, green: 0.278, blue: 0.122, alpha: 1),
+                NSColor(srgbRed: 0.545, green: 0.325, blue: 0.149, alpha: 1),
+                NSColor(srgbRed: 0.627, green: 0.380, blue: 0.180, alpha: 1)
             ], atLocations: [0, 0.55, 1], colorSpace: .deviceRGB)?
                 .draw(in: petal.path.bounds, angle: petal.angle * 180 / .pi)
         } else {
-            // Light glass: bright translucent white, slightly denser at the
-            // neck, lifting toward the broad end — the macOS material read.
+            // Unselected: darker inner neck, main body, lighter broad end.
             NSGradient(colors: [
-                NSColor(srgbRed: 1.0, green: 1.0, blue: 1.0, alpha: 0.82),
-                NSColor(srgbRed: 0.965, green: 0.972, blue: 0.988, alpha: 0.72),
-                NSColor(srgbRed: 0.93, green: 0.945, blue: 0.972, alpha: 0.62)
+                NSColor(srgbRed: 0.125, green: 0.129, blue: 0.141, alpha: 1),
+                NSColor(srgbRed: 0.165, green: 0.169, blue: 0.184, alpha: 1),
+                NSColor(srgbRed: 0.188, green: 0.192, blue: 0.212, alpha: 1)
             ], atLocations: [0, 0.45, 1], colorSpace: .deviceRGB)?
                 .draw(in: petal.path.bounds, angle: petal.angle * 180 / .pi)
         }
 
-        // Faint cool shading where the neck meets the hub keeps the join
-        // from looking pasted without darkening the glass.
+        // Glass depth: dark pooling where the neck meets the hub.
         let neckCenter = fanPoint(petal.angle, petal.sideInner + petal.length * 0.05)
         if let neck = NSGradient(colors: [
-            NSColor(srgbRed: 0.55, green: 0.58, blue: 0.65, alpha: hover ? 0.10 : 0.16),
-            NSColor.clear
+            NSColor.black.withAlphaComponent(hover ? 0.14 : 0.24), NSColor.clear
         ]) {
             neck.draw(fromCenter: neckCenter, radius: 0,
-                      toCenter: neckCenter, radius: petal.length * 0.30, options: [])
+                      toCenter: neckCenter, radius: petal.length * 0.34, options: [])
         }
 
         // Light pool on the rounded cap — the glass read.
         let bloomCenter = fanPoint(petal.angle, petal.sideOuter - 3 * petal.scale)
         let bloomColor = hover
-            ? NSColor(srgbRed: 1.0, green: 0.86, blue: 0.62, alpha: 0.30)
-            : NSColor.white.withAlphaComponent(0.28)
+            ? NSColor(srgbRed: 1.0, green: 0.76, blue: 0.42, alpha: 0.24)
+            : NSColor.white.withAlphaComponent(0.13)
         if let bloom = NSGradient(colors: [bloomColor, NSColor.clear]) {
             bloom.draw(fromCenter: bloomCenter, radius: 0,
                        toCenter: bloomCenter, radius: petal.outerHalf * 2.6, options: [])
@@ -922,16 +919,15 @@ final class WheelView: NSView {
         NSGraphicsContext.restoreGraphicsState()
 
         let border = hover
-            ? NSColor(srgbRed: 0.706, green: 0.463, blue: 0.169, alpha: 1)
-            : NSColor.white.withAlphaComponent(0.95)
+            ? NSColor(srgbRed: 0.788, green: 0.522, blue: 0.208, alpha: 1)
+            : NSColor(srgbRed: 0.290, green: 0.294, blue: 0.322, alpha: 1)
         border.setStroke()
         petal.path.lineWidth = (hover ? 1.4 : 1.0) * petal.scale
         petal.path.stroke()
-        // Crisp inner divider: a dark hairline just inside the white border,
-        // the way system glass panels get their edge definition.
+        // Lit glass edge just inside the border.
         let edge = hover
-            ? NSColor(srgbRed: 0.42, green: 0.24, blue: 0.07, alpha: 0.35)
-            : NSColor.black.withAlphaComponent(0.10)
+            ? NSColor(srgbRed: 1.0, green: 0.85, blue: 0.62, alpha: 0.26)
+            : NSColor.white.withAlphaComponent(0.14)
         edge.setStroke()
         petal.path.lineWidth = 0.75 * petal.scale
         petal.path.stroke()
@@ -956,9 +952,10 @@ final class WheelView: NSView {
         let iconSize = (hover ? 22.0 : (isFormat ? 21.0 : 20.0)) * artScale
         if let image = symbol(iconGlyph, pointSize: iconSize,
                               color: hover
-                                  ? NSColor.white
-                                  : NSColor(srgbRed: 0.22, green: 0.22, blue: 0.25,
-                                            alpha: 0.86)) {
+                                  ? NSColor(srgbRed: 1.0, green: 0.702, blue: 0.302,
+                                            alpha: 1)
+                                  : NSColor(srgbRed: 0.816, green: 0.816, blue: 0.835,
+                                            alpha: 1)) {
             let size = image.size
             image.draw(in: NSRect(x: iconPoint.x - size.width / 2,
                                   y: iconPoint.y - size.height / 2,
@@ -973,7 +970,7 @@ final class WheelView: NSView {
             .font: font,
             .foregroundColor: hover
                 ? NSColor.white
-                : NSColor(srgbRed: 0.114, green: 0.114, blue: 0.122, alpha: 1),
+                : NSColor(srgbRed: 0.941, green: 0.941, blue: 0.949, alpha: 1),
             .paragraphStyle: para,
             .kern: 0.1
         ]
@@ -1002,20 +999,20 @@ final class WheelView: NSView {
         let circle = NSBezierPath(ovalIn: hubRect)
 
         let shadow = NSShadow()
-        shadow.shadowColor = NSColor.black.withAlphaComponent(0.24)
-        shadow.shadowBlurRadius = 14
-        shadow.shadowOffset = NSSize(width: 0, height: -4)
+        shadow.shadowColor = NSColor.black.withAlphaComponent(0.50)
+        shadow.shadowBlurRadius = 18
+        shadow.shadowOffset = NSSize(width: 0, height: -5)
         NSGraphicsContext.saveGraphicsState()
         shadow.set()
-        NSColor(srgbRed: 0.98, green: 0.985, blue: 0.995, alpha: 0.92).setFill()
+        NSColor(srgbRed: 0.098, green: 0.102, blue: 0.114, alpha: 0.99).setFill()
         circle.fill()
         NSGraphicsContext.restoreGraphicsState()
 
         NSGraphicsContext.saveGraphicsState()
         circle.addClip()
         NSGradient(colors: [
-            NSColor(srgbRed: 1.0, green: 1.0, blue: 1.0, alpha: 0.88),
-            NSColor(srgbRed: 0.93, green: 0.94, blue: 0.96, alpha: 0.74)
+            NSColor(srgbRed: 0.118, green: 0.122, blue: 0.137, alpha: 1),
+            NSColor(srgbRed: 0.078, green: 0.082, blue: 0.098, alpha: 1)
         ])?.draw(in: hubRect, angle: 90)
         // Soft top light so the hub reads as a glass puck.
         if let sheen = NSGradient(colors: [
@@ -1027,13 +1024,13 @@ final class WheelView: NSView {
         }
         NSGraphicsContext.restoreGraphicsState()
 
-        NSColor.white.withAlphaComponent(0.95).setStroke()
+        NSColor(srgbRed: 0.231, green: 0.235, blue: 0.251, alpha: 1).setStroke()
         circle.lineWidth = 1.5
         circle.stroke()
-        // Crisp inner divider, mirroring the petals' dark hairline.
+        // Lit inner rim just inside the border.
         NSGraphicsContext.saveGraphicsState()
         fanAnnulus(radius: fanInner - 1.2, inner: fanInner - 2.8).addClip()
-        NSColor.black.withAlphaComponent(0.10).setFill()
+        NSColor.white.withAlphaComponent(0.13).setFill()
         hubRect.fill()
         NSGraphicsContext.restoreGraphicsState()
 
@@ -1061,8 +1058,8 @@ final class WheelView: NSView {
 
         let iconSize = 26 * s
         if let image = symbol(kind?.symbol ?? "doc", pointSize: iconSize,
-                              color: NSColor(srgbRed: 0.16, green: 0.16, blue: 0.18,
-                                             alpha: 0.88)) {
+                              color: NSColor(srgbRed: 0.941, green: 0.941, blue: 0.949,
+                                             alpha: 1)) {
             let size = image.size
             let iconY = center.y + 23 * s
             image.draw(in: NSRect(x: center.x - size.width / 2,
@@ -1077,8 +1074,8 @@ final class WheelView: NSView {
                        y: center.y - 1 * s - nameHeight / 2,
                        width: 2 * fanInner - 28 * s, height: nameHeight),
             withAttributes: [.font: nameFont,
-                             .foregroundColor: NSColor(srgbRed: 0.114, green: 0.114,
-                                                       blue: 0.122, alpha: 1),
+                             .foregroundColor: NSColor(srgbRed: 0.941, green: 0.941,
+                                                       blue: 0.949, alpha: 1),
                              .paragraphStyle: para])
 
         let metaFont = NSFont.systemFont(ofSize: max(6.5, 10.0 * s), weight: .medium)
@@ -1088,8 +1085,8 @@ final class WheelView: NSView {
                        y: center.y - 18 * s - metaHeight / 2,
                        width: 2 * fanInner - 32 * s, height: metaHeight),
             withAttributes: [.font: metaFont,
-                             .foregroundColor: NSColor(srgbRed: 0.42, green: 0.42,
-                                                       blue: 0.45, alpha: 1),
+                             .foregroundColor: NSColor(srgbRed: 0.631, green: 0.631,
+                                                       blue: 0.655, alpha: 1),
                              .paragraphStyle: para])
 
         // The hovered choice explains itself: its hint rides under the file
@@ -1102,7 +1099,7 @@ final class WheelView: NSView {
                            y: center.y - 34 * s - hintHeight / 2,
                            width: 2 * fanInner - 24 * s, height: hintHeight),
                 withAttributes: [.font: hintFont,
-                                 .foregroundColor: NSColor(calibratedWhite: 0.35, alpha: 0.75),
+                                 .foregroundColor: NSColor(calibratedWhite: 1, alpha: 0.55),
                                  .paragraphStyle: para])
         }
     }
